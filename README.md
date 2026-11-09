@@ -341,7 +341,7 @@ These are planning estimates. Always check access, gates and closures on the day
 | `data/races.js`, `data/runner-info.js` | Races from the course sheet, and the runner app's contact, gear and notices |
 | `data/safety-cards.js` | The runner app's Help tab in five languages: the international runners' emergency card around the app's tools, and the tab's labels |
 | `js/races.js` | Races, cut-offs and expected times, shared by the runner and field apps |
-| `data/splits.js` | Expected splits fitted to the 2026 Miler field (contingency course), used by `js/races.js` |
+| `data/splits.js` | Expected splits fitted to the 2026 field: the Miler (contingency course) and each stage, also used by the 50k and 33k, used by `js/races.js` |
 | `js/intro.js` | First-time intro and how-to for the staff and field apps |
 | `js/viewport.js` | Keeps the bottom tabs on the real bottom of the screen (iPhone home screen apps can open with the layout the wrong height the first time) |
 | `js/profile.js` | Elevation profile (Find tab and field app) |
