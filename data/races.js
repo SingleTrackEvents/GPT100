@@ -2,7 +2,9 @@
 // km, up and down are the official race figures; the app maps them onto the course line by aid station.
 // Since 5 November 2026 the Miler and Stage 3 take the contingency from Mt William to Jimmy Creek: Stockyard Track is
 // off the course (no water point in its place), and km, up and down from Jimmy Creek on move by the measured
-// difference (1.6 km, -517 m up, -517 m down). Cut-offs are unchanged. Re-importing the sheet undoes this.
+// difference (1.6 km, -517 m up, -517 m down). Cut-offs are unchanged. The Miler's first-runner times from Jimmy
+// Creek Camp on are 32 min earlier than the sheet's: the 2026 winner ran Mt William to Jimmy Creek in 2 h 03 min on
+// the contingency, and the later legs as planned. Re-importing the sheet undoes this.
 window.GPT_RACES = {
  "stages": {
   "miler": {
@@ -114,7 +116,7 @@ window.GPT_RACES = {
      "km": 108.3,
      "up": 4608,
      "down": 4548,
-     "first": "2026-11-06T20:27",
+     "first": "2026-11-06T19:55",
      "cutoff": "2026-11-07T14:30",
      "drop": true,
      "crew": "yes"
@@ -125,7 +127,7 @@ window.GPT_RACES = {
      "km": 120.1,
      "up": 5188,
      "down": 5108,
-     "first": "2026-11-06T22:10",
+     "first": "2026-11-06T21:38",
      "cutoff": "2026-11-07T18:30",
      "drop": false,
      "crew": "no"
@@ -136,7 +138,7 @@ window.GPT_RACES = {
      "km": 132.3,
      "up": 5628,
      "down": 5598,
-     "first": "2026-11-06T23:53",
+     "first": "2026-11-06T23:21",
      "cutoff": "2026-11-07T22:15",
      "drop": true,
      "crew": "shuttle"
@@ -147,7 +149,7 @@ window.GPT_RACES = {
      "km": 143.6,
      "up": 6078,
      "down": 5968,
-     "first": "2026-11-07T01:28",
+     "first": "2026-11-07T00:56",
      "cutoff": "2026-11-08T02:00",
      "drop": false,
      "crew": "shuttle"
@@ -158,7 +160,7 @@ window.GPT_RACES = {
      "km": 154.4,
      "up": 6728,
      "down": 6698,
-     "first": "2026-11-07T03:23",
+     "first": "2026-11-07T02:51",
      "cutoff": "2026-11-08T06:30",
      "drop": false,
      "crew": "shuttle"
@@ -169,7 +171,7 @@ window.GPT_RACES = {
      "km": 164.6,
      "up": 7183,
      "down": 7183,
-     "first": "2026-11-07T04:47",
+     "first": "2026-11-07T04:15",
      "cutoff": "2026-11-08T10:00",
      "drop": true,
      "crew": "yes"
