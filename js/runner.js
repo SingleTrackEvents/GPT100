@@ -7,8 +7,8 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const one = x => (Math.round(x * 10) / 10).toFixed(1);
-  // A stored null, or the wrong type (a corrupt or hand-edited value), gives the default.
-  const store = { get(k, d) { try { const v = localStorage.getItem('rn.' + k), p = v == null ? null : JSON.parse(v); return p == null || (d && typeof d === 'object' && typeof p !== 'object') ? d : p; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('rn.' + k, JSON.stringify(v)); } catch (e) { } } };
+  // A stored null, or the wrong type (a corrupt or hand-edited value: text for a list, a list for a set of ticks), gives the default.
+  const store = { get(k, d) { try { const v = localStorage.getItem('rn.' + k), p = v == null ? null : JSON.parse(v); return p == null || (d && typeof d === 'object' && (typeof p !== 'object' || Array.isArray(d) !== Array.isArray(p))) ? d : p; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('rn.' + k, JSON.stringify(v)); } catch (e) { } } };
 
   // Races, cut-offs and expected times (js/races.js, shared with the field app).
   const { mel, fmt, hm, when, dur, engineFor, prepare, toRace, toCourse, timeAt, interpKm, paceAt, liveEta } = window.GPTRaces;
@@ -179,7 +179,7 @@
     const bi = cands.reduce((a, b) => Math.abs(En.route[b][2] - expect) < Math.abs(En.route[a][2] - expect) ? b : a, cands[0]);
     const q = En.route[bi];
     // near: the stored words of the nearest course point (data/course-w3w.js), for when there's no signal.
-    here = { stage, t: now, lat, lon, acc, ic: bi, gk: q[2], rk: Math.max(0, toRace(stage, q[2])), ele: q[3], offM: Math.round(bd), cp: [q[0], q[1]], w3w: null, near: En.nearW3w(lat, lon), w3wDone: false };
+    here = { stage, t: now, lat, lon, acc, ic: bi, gk: q[2], rk: Math.max(0, toRace(stage, q[2])), ele: q[3], offM: Math.round(bd), cp: [q[0], q[1]], w3w: null, near: En.nearW3w ? En.nearW3w(lat, lon) : null, w3wDone: false };
     // Where you are, for the Track tab and the runners on the map: a tap on a runner says how far they are from you.
     if (window.GPTTracking) GPTTracking.setMe({ lat, lon, t: now, course: En.id, km: q[2], offM: Math.round(bd) });
     render();

@@ -11,7 +11,7 @@
   const C = window.GPT100_CONFIG || {}, T = C.tracking || {}, RS = window.GPTRaces, R = RS.R;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const one = x => (Math.round(x * 10) / 10).toFixed(1);
-  const store = { get(k, d) { try { const v = localStorage.getItem('rn.' + k), p = v == null ? null : JSON.parse(v); return p == null || (d && typeof d === 'object' && typeof p !== 'object') ? d : p; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('rn.' + k, JSON.stringify(v)); } catch (e) { } } };
+  const store = { get(k, d) { try { const v = localStorage.getItem('rn.' + k), p = v == null ? null : JSON.parse(v); return p == null || (d && typeof d === 'object' && (typeof p !== 'object' || Array.isArray(d) !== Array.isArray(p))) ? d : p; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('rn.' + k, JSON.stringify(v)); } catch (e) { } } };
   const TR = () => window.GPTTracking || null;
   const live = () => !!(TR() && TR().ready());
   // Every runner once (by bib: a runner the chips knew before the trackers loaded can have an older entry too).
@@ -112,7 +112,8 @@
   let open = store.get('trackOpen', {});
 
   // ---------- the cards ----------
-  function card(o) {
+  // first: the first card on the tab, which carries the hint about ◎ until the app knows where you are.
+  function card(o, first) {
     const p = o.r.pos, s = state(o), S = o.S, now = Date.now(), len = lenOf(o), t0 = startT(o), E = etas(o), fr = finishRead(o);
     let h = `<div class="tk-head"><div><p class="tk-name">${esc(o.name || 'Bib ' + o.bib)}</p><p class="tk-sub">Bib ${esc(o.bib)}${o.label ? ' · ' + esc(o.label) : ''}${age(o)}</p></div><span class="tk-pill ${s.k}">${esc(s.text)}</span></div>`;
     if (fr && t0) h += `<p class="tk-big">${hmm(fr.t - t0)}</p><p class="tk-line">Crossed the finish ${at(fr.t)}.</p>`;
@@ -121,7 +122,7 @@
       const km = TR().cur(o.r), rk = raceKm(o, km);
       h += `<p class="tk-big">km ${one(rk)}${len ? `<small> of ${one(len)}</small>` : ''}</p>`;
       if (p.est) h += `<p class="tk-line">${p.est.capped ? `Somewhere between km ${one(raceKm(o, p.est.fromKm))} and ${esc(p.est.to)}, at their pace` : 'Likely about here now, at their pace'}.</p>`;
-      const ml = meLine(o);
+      const ml = meLine(o, !!first);
       if (ml) h += `<p class="tk-line tk-me">${ml}</p>`;
       h += `<p class="tk-src">Last fix: ${source(p)}</p>`;
       if (t0 && now > t0) h += `<p class="tk-line">Running for ${hmm(now - t0)}.</p>`;
@@ -246,7 +247,7 @@
     follow.forEach(bib => {
       const o = live() ? info(bib) : null;
       // Saved without the from-you line: that's only true while you're standing there.
-      if (o) { const html = card(o); out.push(html); saved[bib] = { t: Date.now(), html: html.replace(/<p class="tk-line tk-me">.*?<\/p>/, '') }; changed = true; }
+      if (o) { const html = card(o, !out.length); out.push(html); saved[bib] = { t: Date.now(), html: html.replace(/<p class="tk-line tk-me">.*?<\/p>/, '') }; changed = true; }
       else if (saved[bib]) out.push(saved[bib].html.replace('<div class="tk-head">', `<p class="tk-saved">Saved ${at(saved[bib].t)}: no live update since.</p><div class="tk-head">`));
       else out.push(`<section class="fd-card tk-card"><div class="tk-head"><div><p class="tk-name">Bib ${esc(bib)}</p><p class="tk-sub">${live() ? 'Not in the tracking or timing lists.' : 'Waiting for live tracking.'}</p></div></div><div class="tk-btns"><button type="button" class="btn small tk-off" data-follow="${esc(bib)}">Unfollow</button></div></section>`);
     });

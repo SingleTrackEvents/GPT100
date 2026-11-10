@@ -28,7 +28,16 @@
       id: def.id, name: def.name, main: false, route, metres: MAIN.metres, idxAtKm,
       AID: def.stops.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, trail_km: s.km, kind: s.kind })),
       climb: (a, b) => a <= b ? asc[b] - asc[a] : desc[a] - desc[b],
-      snap(lat, lon) { let bi = 0, bd = Infinity; route.forEach((p, i) => { const d = MAIN.metres([lat, lon], [p[0], p[1]]); if (d < bd) { bd = d; bi = i; } }); return { ic: bi, offM: Math.round(bd) }; }
+      snap(lat, lon) { let bi = 0, bd = Infinity; route.forEach((p, i) => { const d = MAIN.metres([lat, lon], [p[0], p[1]]); if (d < bd) { bd = d; bi = i; } }); return { ic: bi, offM: Math.round(bd) }; },
+      // These courses have no stored what3words of their own. Where they share track with the GPT100 or the 14k (around
+      // Halls Gap and Dunkeld), the stored words of the nearest point of those stand in; elsewhere there are none, and
+      // the apps give the position as numbers. (Without this the runner app's ◎ and Find my 3 words threw an error
+      // for the 6k, 5k and 2k: found by the November 2026 crash test.)
+      nearW3w(lat, lon, maxM) {
+        let best = null;
+        (MAIN.courses || [MAIN]).forEach(C => { const w = C.nearW3w && C.nearW3w(lat, lon, maxM); if (w && (!best || w.m < best.m)) best = w; });
+        return best;
+      }
     };
     E.courses = [E];
     return E;
