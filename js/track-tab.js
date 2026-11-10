@@ -107,8 +107,11 @@
     bib = String(bib);
     follow = isOn(bib) ? follow.filter(b => b !== bib) : follow.concat(bib);
     store.set('follow', follow);
-    draw(); alerts(true);
+    draw(); alerts(true); told();
   }
+  // The Crew tab picks its runner from the followed ones, and takes their live pace from here.
+  const told = () => { try { window.dispatchEvent(new Event('rn-follow')); } catch (e) { } };
+  window.GPTTrackTab = { follow: () => follow.slice(), info: bib => info(bib), etas: o => etas(o), readsAt: (o, k) => readsAt(o, k) };
   // Alerts (js/live.js): a notification when a followed runner reaches a checkpoint. The Worker is told who's
   // followed whenever the list changes.
   const LV = window.GPTLive;
@@ -498,7 +501,7 @@
   function fromHash() {
     const m = /bib=(\d+)/.exec(location.hash);
     if (!m) return false;
-    if (!isOn(m[1])) { follow = follow.concat(m[1]); store.set('follow', follow); alerts(true); }
+    if (!isOn(m[1])) { follow = follow.concat(m[1]); store.set('follow', follow); alerts(true); told(); }
     try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { }
     if (window.GPTRunner) GPTRunner.setTab('track');
     return true;

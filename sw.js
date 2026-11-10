@@ -21,7 +21,7 @@ const FILES = [
   'lib/fonts.css', 'lib/leaflet.css', 'lib/leaflet.js', 'js/live.js', 'css/app.css', 'css/field.css', 'css/runner.css', 'js/engine.js', 'js/app.js', 'js/medplan.js', 'js/weather-core.js', 'js/weather.js', 'js/rc.js', 'js/risk.js', 'js/basemap.js', 'js/intro.js',
   'js/viewport.js', 'js/races.js', 'js/profile.js', 'js/helipads.js', 'js/track.js', 'js/timing.js', 'js/tracking.js', 'js/fullscreen.js', 'js/runners.js', 'js/demo.js', 'js/map.js', 'js/field.js', 'js/runner.js', 'js/track-tab.js', 'js/heading.js', 'js/contingency.js',
   'data/config.js', 'data/course.js', 'data/courses.js', 'data/course-w3w.js', 'data/access-edits.js', 'data/medplan.enc.js', 'data/register.enc.js', 'data/safety-officers.js', 'data/pacing.js', 'data/splits.js', 'data/contingency.js',
-  'data/tiles.js', 'data/helipads.js', 'data/track-grades.js', 'data/demo-runners.js', 'data/races.js', 'data/runner-courses.js', 'data/runner-info.js', 'data/safety-cards.js'
+  'data/tiles.js', 'data/helipads.js', 'data/track-grades.js', 'data/demo-runners.js', 'data/races.js', 'data/runner-courses.js', 'data/runner-info.js', 'data/safety-cards.js', 'data/crew-drives.js'
 ];
 const SHELL = PAGES.concat(FILES.map(u => u + '?v=' + BUILD));
 const TILES = 'gpt100-tiles';

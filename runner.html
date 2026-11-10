@@ -75,12 +75,17 @@
     <div data-for="crew" hidden>
       <section class="fd-card">
         <h2>Your runner</h2>
-        <p class="fd-hint">Their expected times come from their target time, or from where they were last seen.</p>
+        <p class="fd-hint">Their expected times come from live tracking when you follow them on the Track tab, or from where they were last seen.</p>
+        <label class="rn-crewpick" id="rnCrewBibRow" hidden><span>Runner</span><select id="rnCrewBib" class="rn-schedfor"></select></label>
+        <p id="rnCrewLive" class="fd-hint" hidden></p>
         <div class="rn-seen">
           <label>Last seen at <select id="rnSeenAt"><option value="">(not yet)</option></select></label>
           <label>at <input id="rnSeenTime" type="time"></label>
         </div>
         <p id="rnSeenMsg" class="fd-hint"></p>
+        <!-- When to leave for the next crew point: the runner's expected time less the drive (data/crew-drives.js) -->
+        <div id="rnCrewNext" class="rn-crewnext" hidden></div>
+        <label class="rn-crewpick" id="rnCrewFromRow" hidden><span>Driving from</span><select id="rnCrewFrom" class="rn-schedfor"></select></label>
       </section>
     </div>
     <section class="fd-card">
@@ -216,6 +221,7 @@
 <script src="data/runner-courses.js?v=103"></script>
 <script src="data/runner-info.js?v=103"></script>
 <script src="data/safety-cards.js?v=103"></script>
+<script src="data/crew-drives.js"></script>
 <script src="js/races.js?v=103"></script>
 <script src="data/demo-runners.js?v=103"></script>
 <script src="js/demo.js?v=103"></script>

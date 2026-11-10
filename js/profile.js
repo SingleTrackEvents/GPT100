@@ -17,7 +17,8 @@
 
   // o: { el, course, map() → Leaflet map or null, who ('you' or 'the casualty'), colour, empty (text before a point is set),
   //       window(E) → { k0, k1 } to show only part of a course (one race), km { toRace(k), toCourse(rk) } to label in race km,
-  //       courses() → the courses a map tap can pick (default: every course), title(E) → the whole-view title, height (px, default 164), summary() → HTML under the graph (or null) }
+  //       courses() → the courses a map tap can pick (default: every course), title(E) → the whole-view title, height (px, default 164), summary() → HTML under the graph (or null),
+  //       pointNote(E, km) → a line of HTML for a picked point (or '') }
   window.GPTProfile = function (o) {
     const root = o.el, who = o.who || 'you', colour = o.colour || '#1666c9';
     root.classList.add('prof');
@@ -136,6 +137,9 @@
         const ic = E.idxAtKm(here.km), d = p[2] - here.km;
         if (Math.abs(d) >= 0.05) h += `<br>From ${who}: ${one(Math.abs(d))} km ${d > 0 ? 'ahead' : 'back'}, +${Math.round(E.climb(ic, j))} m / −${Math.round(E.climb(j, ic))} m`;
       }
+      // An app can add a line of its own for the point (the runner app: when you or your runner would pass it).
+      const note = o.pointNote && o.pointNote(E, p[2]);
+      if (note) h += '<br>' + note;
       info.innerHTML = h;
       const m = map();
       if (m && window.L) { if (!mk) mk = L.circleMarker([p[0], p[1]], { radius: 7, color: '#111', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false }); mk.setLatLng([p[0], p[1]]).addTo(m); }
