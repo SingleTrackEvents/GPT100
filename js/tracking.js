@@ -42,6 +42,9 @@
   // tracking.gpsJoinedOnly: GPS events that carry more than runners (every tracker: vehicles, sweeps, other races).
   // A tracker in one of them is shown only when it's joined to a chip runner in the event's races (gpsRaces).
   const JOINED = new Set(T.gpsJoinedOnly || []);
+  // tracking.gpsBibs: a tracker's bib in the GPS to the runner's bib in the timing list, where the providers number
+  // a runner differently (relay teams, say). Kept by timing list bib, for the join below.
+  const GPS_BIB = new Map(Object.entries(T.gpsBibs || {}).map(([g, c]) => [String(c), String(g)]));
   const S = { ready: false, live: false, name: '', interval: 15, runners: new Map(), byBib: new Map(), allBib: new Map(), rawIds: new Map(), bytes: -1, reset: -1, lastLine: 'undef', updated: 0, error: null, listeners: [], gps: GPS };
 
   // ---------- the GPS feed ----------
@@ -152,10 +155,11 @@
     // tracker in another race's GPS event has (the providers number some relay teams the same): two people, kept apart.
     for (const r of S.runners.values()) r.chip = null;
     if (TC) for (const c of TC.runners()) {
-      const A = S.allBib.get(c.bib) || [];
+      const A = (S.allBib.get(c.bib) || []).concat(S.allBib.get(GPS_BIB.get(c.bib)) || []);  // its own bib, or its paired GPS bib
       let r = A.find(x => fits(x, c)) || (A.length ? S.runners.get('chip:' + c.bib) : S.byBib.get(c.bib)) || null;
       if (!r) { r = { id: 'chip:' + c.bib, bib: c.bib, name: c.name, label: c.bib + ' ' + c.name, pts: [] }; S.runners.set(r.id, r); if (!S.byBib.has(c.bib)) S.byBib.set(c.bib, r); }
       else if (A.length > 1 && r.pts !== undefined && !r.id.startsWith('chip:')) S.byBib.set(c.bib, r);  // two trackers with this bib: the one in the chip runner's race answers to it
+      if (r.bib !== c.bib && !r.id.startsWith('chip:')) S.byBib.set(c.bib, r);  // paired bibs: either one finds them
       r.chip = c;
       if (!r.name && c.name) { r.name = c.name; r.label = c.bib + ' ' + c.name; }
     }
