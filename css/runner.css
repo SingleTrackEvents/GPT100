@@ -268,6 +268,9 @@
 .tk-big small { font-size: 22px; color: var(--muted); }
 .tk-line { margin: 4px 0; }
 .tk-src { margin: 4px 0; font-size: 13px; color: var(--muted); }
+.tk-place small { margin-left: 8px; font-size: 12px; color: var(--muted); }
+.tk-late { color: var(--red); }
+.tk-age { margin: 0 0 8px; }
 .tk-saved { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--amber); }
 .tk-more { margin: 8px 0 2px; }
 .tk-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

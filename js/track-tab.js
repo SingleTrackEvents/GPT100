@@ -125,7 +125,8 @@
   function card(o, first) {
     const p = o.r.pos, s = state(o), S = o.S, now = Date.now(), len = lenOf(o), t0 = startT(o), E = etas(o), fr = finishRead(o);
     let h = `<div class="tk-head"><div><p class="tk-name">${esc(o.name || 'Bib ' + o.bib)}</p><p class="tk-sub">Bib ${esc(o.bib)}${o.label ? ' · ' + esc(o.label) : ''}${age(o)}</p></div><span class="tk-pill ${s.k}">${esc(s.text)}</span></div>`;
-    if (fr && t0) h += `<p class="tk-big">${hmm(fr.t - t0)}</p><p class="tk-line">Crossed the finish ${at(fr.t)}.</p>`;
+    const pl = places(o), placeLine = pl ? `<p class="tk-line tk-place">${fr ? 'Finished' : 'Running'} <b>${nth(pl.n)}</b> of ${pl.of}${pl.g ? ` · ${nth(pl.g)} ${o.gender === 'F' ? 'woman' : 'man'}` : ''}${pl.a ? ` · ${nth(pl.a)} in ${esc(o.gender + ' ' + o.c.age)}` : ''} <small>live order</small></p>` : '';
+    if (fr && t0) h += `<p class="tk-big">${hmm(fr.t - t0)}</p><p class="tk-line">Crossed the finish ${at(fr.t)}.</p>${placeLine}`;
     else if (s.k === 'out') h += `<p class="tk-line">${p && p.chipAt ? `Last read at ${esc(p.chipAt.name)}, ${at(p.chipAt.t)}.` : ''}</p>`;
     else if (p) {
       const km = TR().cur(o.r), rk = raceKm(o, km);
@@ -135,11 +136,17 @@
       if (ml) h += `<p class="tk-line tk-me">${ml}</p>`;
       h += `<p class="tk-src">Last fix: ${source(p)}</p>`;
       if (t0 && now > t0) h += `<p class="tk-line">Running for ${hmm(now - t0)}.</p>`;
-      // Next point and the finish.
+      h += placeLine;
+      const leg = lastLeg(o);
+      if (leg) h += `<p class="tk-line">${leg}</p>`;
+      // Next point, the next cut-off with the time in hand, and the finish.
       if (S && E) {
         const P = S.points, nx = P.find(k => k.gk > km + 0.1), fin = P[P.length - 1];
         const tn = nx && E.at(nx), tf = E.p != null ? E.at(fin) : null;
         if (nx && tn) h += `<p class="tk-line">Next: <b>${esc(nx.name)}</b> (km ${one(nx.km)}), ${one(Math.max(0, nx.gk - km))} km to go, expected about <b>${at(tn)}</b>.</p>`;
+        // (Not once that cut-off is hours gone: the demo race runs on today's clock, long after the real ones.)
+        const ck = P.find(k => k.gk > km + 0.1 && k.ct && !k.noCut && k.ct.getTime() > now - 6 * 3600e3), tc = ck && E.at(ck);
+        if (ck && tc) { const d = ck.ct.getTime() - tc; h += d >= 0 ? `<p class="tk-line">Cut-off at ${esc(ck.name)} is ${at(ck.ct)}: about <b>${hmm(d)} in hand</b> at this pace.</p>` : `<p class="tk-line tk-late">Cut-off at ${esc(ck.name)} is ${at(ck.ct)}: at this pace about <b>${hmm(-d)} after it</b>.</p>`; }
         if (tf && nx !== fin) h += `<p class="tk-line">Finish about <b>${at(tf)}</b>, a time of about ${hmm(tf - t0)}.</p>`;
       }
     } else if (S) h += `<p class="tk-line">Starts ${at(S.points[0].ft)} at ${esc(S.points[0].name)}.</p>`;
@@ -191,11 +198,12 @@
   $('tkFind').addEventListener('input', drawHits);
 
   // ---------- results: the live order of a race ----------
-  let gFilter = '', raceSel = null, showAll = false;
+  let gFilter = '', aFilter = '', raceSel = null, showAll = false;
   const TOP = 25;
-  function order(key) {
+  // g: 'F' or 'M', a: an age category as the timing list gives it ("40 to 49"); empty for everyone.
+  function order(key, g, a) {
     const tr = TR(); if (!tr) return [];
-    const rs = everyone().filter(r => r.chip && r.chip.raceKey === key).map(r => info(r.bib)).filter(o => o && (!gFilter || o.gender === gFilter));
+    const rs = everyone().filter(r => r.chip && r.chip.raceKey === key).map(r => info(r.bib)).filter(o => o && (!g || o.gender === g) && (!a || o.c.age === a));
     const rank = o => { const st = o.c.status; return st === 'finished' ? 0 : !st && o.r.pos ? 1 : !st ? 2 : st === 'dns' ? 4 : 3; };
     return rs.sort((a, b) => {
       const ra = rank(a), rb = rank(b);
@@ -205,6 +213,37 @@
       return +a.bib - +b.bib;
     });
   }
+  // A runner's live place in their race: overall, among the women or men, and in their age category. The same
+  // order as Results (finishers by time, then by how far along), worked out once for each update of the feeds.
+  let placeMemo = { at: -1, by: {} };
+  function ranked(key) {
+    const tr = TR(), stamp = tr ? tr.state.updated || 0 : 0;
+    if (placeMemo.at !== stamp) placeMemo = { at: stamp, by: {} };
+    return placeMemo.by[key] || (placeMemo.by[key] = order(key, '', '').filter(o => o.c.status === 'finished' || (!o.c.status && o.r.pos)));
+  }
+  function places(o) {
+    if (!o.c || !o.key) return null;
+    const L = ranked(o.key), i = L.findIndex(x => x.bib === o.bib);
+    if (i < 0 || L.length < 2) return null;
+    const g = o.gender === 'F' || o.gender === 'M' ? L.filter(x => x.gender === o.gender) : null, a = g && o.c.age ? g.filter(x => x.c.age === o.c.age) : null;
+    return { n: i + 1, of: L.length, g: g && g.length < L.length ? g.findIndex(x => x.bib === o.bib) + 1 : 0, a: a && a.length < g.length ? a.findIndex(x => x.bib === o.bib) + 1 : 0 };
+  }
+  const nth = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+  // The last leg they ran between two timing mats: how far, how long and the pace. Where an aid station has an In
+  // and an Out mat, the leg runs from leaving one to arriving at the next.
+  function lastLeg(o) {
+    const rs = o.c ? o.c.reads : [];
+    let j = rs.length - 1;
+    if (j > 0 && /\(out\)$/.test(rs[j].name) && Math.abs(rs[j].km - rs[j - 1].km) < 0.4) j--;
+    const b = rs[j]; let a = null;
+    for (let i = j - 1; i >= 0; i--) if (b.km - rs[i].km > 0.5) { a = rs[i]; break; }
+    if (!a || b.t <= a.t) return '';
+    const dk = b.km - a.km, dt = b.t - a.t, sec = Math.round(dt / 1000 / dk);
+    return `Last leg: ${esc(a.name.replace(/\s*\(out\)$/, ''))} to ${esc(b.name)}, ${one(dk)} km in <b>${hmm(dt)}</b> (${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} a km).`;
+  }
+  // Age categories in a race, youngest first, for the Results filter.
+  const ageNum = a => { const m = /\d+/.exec(a); return m ? +m[0] - (/^under/i.test(a) ? 1 : 0) : 999; };
+  const agesIn = key => [...new Set(everyone().filter(r => r.chip && r.chip.raceKey === key && r.chip.age).map(r => r.chip.age))].sort((x, y) => ageNum(x) - ageNum(y) || x.localeCompare(y));
   function drawOrder() {
     const tr = TR(), keys = tr ? ORDER.filter(k => everyone().some(r => r.chip && r.chip.raceKey === k)) : [];
     const sel = $('tkRace');
@@ -213,7 +252,14 @@
     const want = raceSel && keys.includes(raceSel) ? raceSel : keys.includes(myKey()) ? myKey() : keys[0];
     if (sel.dataset.keys !== keys.join()) { sel.innerHTML = keys.map(k => `<option value="${k}">${esc(LABEL[k] || k)}</option>`).join(''); sel.dataset.keys = keys.join(); }
     sel.value = want;
-    const all = order(want), gend = everyone().some(r => r.chip && r.chip.gender);
+    // Age categories, when the timing list has them: the picked one is kept while that race still has it.
+    const ages = agesIn(want), asel = $('tkAge');
+    if (asel) {
+      if (!ages.includes(aFilter)) aFilter = '';
+      if (asel.dataset.k !== want + '|' + ages.join()) { asel.dataset.k = want + '|' + ages.join(); asel.innerHTML = '<option value="">All ages</option>' + ages.map(a => `<option value="${esc(a)}">${esc(a)}</option>`).join(''); }
+      asel.value = aFilter; asel.hidden = !ages.length;
+    }
+    const all = order(want, gFilter, aFilter), gend = everyone().some(r => r.chip && r.chip.gender);
     document.querySelector('.tk-filter').hidden = !gend;
     let n = 0;
     const rows = all.map(o => {
@@ -227,10 +273,12 @@
     // The top of the field, plus anyone followed further down; Show all for the rest.
     const shown = showAll ? rows : rows.filter((x, i) => i < TOP || isOn(all[i].bib));
     const by = T.credit && T.credit.name ? ` Timing by ${T.credit.url ? `<a href="${esc(T.credit.url)}" target="_blank" rel="noopener">${esc(T.credit.name)}</a>` : esc(T.credit.name)}.` : '';
-    $('tkOrder').innerHTML = `<p class="fd-hint">Live order from the timing chips: finishers by time, then runners on course by how far along they are. Tap a name to follow them.${by}</p>` + shown.join('') +
+    const of = [gFilter === 'F' ? 'women' : gFilter === 'M' ? 'men' : '', aFilter].filter(Boolean).join(', ');
+    $('tkOrder').innerHTML = `<p class="fd-hint">Live order from the timing chips${of ? ` (${esc(of)})` : ''}: finishers by time, then runners on course by how far along they are. Tap a name to follow them.${by}</p>` + (rows.length ? shown.join('') : '<p class="muted">Nobody in that group yet.</p>') +
       (rows.length > shown.length ? `<button type="button" class="btn small tk-all" data-all="1">Show all ${rows.length}</button>` : showAll && rows.length > TOP ? `<button type="button" class="btn small tk-all" data-all="0">Show the top ${TOP}</button>` : '');
   }
   $('tkRace').addEventListener('change', () => { raceSel = $('tkRace').value; showAll = false; drawOrder(); });
+  if ($('tkAge')) $('tkAge').addEventListener('change', () => { aFilter = $('tkAge').value; showAll = false; drawOrder(); });
   document.querySelectorAll('.tk-filter button').forEach(b => b.addEventListener('click', () => {
     gFilter = b.dataset.g; document.querySelectorAll('.tk-filter button').forEach(x => x.classList.toggle('on', x === b)); drawOrder();
   }));
