@@ -18,7 +18,7 @@ const PAGES = ['./', 'index.html', 'field.html', 'runner.html', 'map.html', 'adm
   'lib/fonts/montserrat-cyrillic.woff2', 'lib/fonts/montserrat-cyrillic-ext.woff2'];
 // Scripts and styles, saved as the pages ask for them (with ?v=BUILD).
 const FILES = [
-  'lib/fonts.css', 'lib/leaflet.css', 'lib/leaflet.js', 'css/app.css', 'css/field.css', 'css/runner.css', 'js/engine.js', 'js/app.js', 'js/medplan.js', 'js/weather-core.js', 'js/weather.js', 'js/rc.js', 'js/risk.js', 'js/basemap.js', 'js/intro.js',
+  'lib/fonts.css', 'lib/leaflet.css', 'lib/leaflet.js', 'js/live.js', 'css/app.css', 'css/field.css', 'css/runner.css', 'js/engine.js', 'js/app.js', 'js/medplan.js', 'js/weather-core.js', 'js/weather.js', 'js/rc.js', 'js/risk.js', 'js/basemap.js', 'js/intro.js',
   'js/viewport.js', 'js/races.js', 'js/profile.js', 'js/helipads.js', 'js/track.js', 'js/timing.js', 'js/tracking.js', 'js/fullscreen.js', 'js/runners.js', 'js/demo.js', 'js/map.js', 'js/field.js', 'js/runner.js', 'js/track-tab.js', 'js/heading.js', 'js/contingency.js',
   'data/config.js', 'data/course.js', 'data/courses.js', 'data/course-w3w.js', 'data/access-edits.js', 'data/medplan.enc.js', 'data/register.enc.js', 'data/safety-officers.js', 'data/pacing.js', 'data/splits.js', 'data/contingency.js',
   'data/tiles.js', 'data/helipads.js', 'data/track-grades.js', 'data/demo-runners.js', 'data/races.js', 'data/runner-courses.js', 'data/runner-info.js', 'data/safety-cards.js'
@@ -27,7 +27,8 @@ const SHELL = PAGES.concat(FILES.map(u => u + '?v=' + BUILD));
 const TILES = 'gpt100-tiles';
 const OFFLINE_MAP = 'gpt100-offline-map'; // the saved topo map (js/basemap.js); kept across updates
 const WX_CACHE = 'gpt100-weather';
-const KEEP = [VERSION, TILES, OFFLINE_MAP, WX_CACHE];  // (the old gpt100-lib cache of Leaflet and fonts from other sites goes)
+const LIVE = 'gpt100-live'; // where to ask for alerts (js/live.js writes the Worker's address here)
+const KEEP = [VERSION, TILES, OFFLINE_MAP, WX_CACHE, LIVE];  // (the old gpt100-lib cache of Leaflet and fonts from other sites goes)
 const MAX_TILES = 2500;
 const WAIT = 3500; // ms to wait for the network before answering from the cache
 const SHORT = 1000; // ... for a page while the last request got no answer
@@ -256,4 +257,41 @@ self.addEventListener('fetch', e => {
     e.respondWith(netFirst(e, kept, () => caches.open(WX_CACHE).then(c => c.match(key)), () => offline(504), WAIT, true));
     return;
   }
+});
+
+// ---------- alerts (Web Push, tools/LIVE.md) ----------
+// A push carries no message: it wakes this worker, which asks the Worker what's new for this phone (a followed
+// runner's checkpoint read, or a notice from Race Control) and shows it. With no answer (no signal by then) it
+// still says there's news, since a push must always show something.
+self.addEventListener('push', e => {
+  e.waitUntil((async () => {
+    let items = [];
+    try {
+      const base = await (await caches.open(LIVE)).match('/__live-base').then(r => r ? r.text() : '');
+      const sub = await self.registration.pushManager.getSubscription();
+      if (base && sub) {
+        const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint)))].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+        const res = await within(timed(base + '/push/news?ep=' + hash, { cache: 'no-store' }), 9000);
+        items = (await res.json()).items || [];
+      }
+    } catch (err) { }
+    const icon = 'icons/icon-192.png', badge = 'icons/icon-48.png';
+    if (!items.length) return self.registration.showNotification('GPT100', { body: 'There\'s news for you. Open the app to see it.', icon, badge, tag: 'gpt100-news', data: { url: 'runner.html' } });
+    for (const m of items) {
+      const runner = /^[0-9A-Za-z]{1,8}$/.test(m.bib || '');
+      await self.registration.showNotification(m.title || 'GPT100', { body: m.text || '', icon, badge, tag: 'gpt100-' + (runner ? m.bib : 'notice-' + m.id), renotify: true, timestamp: m.t,
+        data: { url: runner ? 'runner.html#bib=' + m.bib : '' } });
+    }
+  })());
+});
+// A tap on an alert opens the app (on that runner), or brings it forward if it's already open.
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '';
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const page = url.split('#')[0], hit = all.find(c => page && c.url.includes(page)) || (!page && all[0]);
+    if (hit) { if (url.includes('#') && hit.navigate) await hit.navigate(new URL(url, self.registration.scope).href).catch(() => { }); return hit.focus(); }
+    return self.clients.openWindow(new URL(url || './', self.registration.scope).href);
+  })());
 });
