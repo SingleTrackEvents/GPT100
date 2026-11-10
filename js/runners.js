@@ -55,13 +55,15 @@
       const w = TR.watch();
       const go = r => `<button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Show</button>`;
       const row = (r, why) => `<div class="row"><span>${TR.who(r)}<span class="sub">${why}, km ${one(TR.cur(r))}${r.pos.est ? ' (estimated)' : ''}${r.pos.course !== G ? ' (' + esc(r.pos.course.label) + ')' : ''}. ${TR.where(r)}</span></span>${go(r)}</div>`;
-      let h = `<p class="trk-status">${esc(TR.status())}</p>${TR.links()}<h3>Runner watch</h3>`;
+      const L = TR.lines;
+      let h = `<p class="trk-status">${esc(TR.status())}</p>${TR.links()}${TR.healthHTML()}<h3>Runner watch</h3>`;
       const any = w.stopped.length || (w.off || []).length || w.late.length || w.quiet.length;
-      if (w.stopped.length) h += '<h4>Not moving for 20 min</h4>' + w.stopped.slice(0, 12).map(r => row(r, 'Not moving')).join('');
-      if ((w.off || []).length) h += '<h4>Off the course</h4>' + w.off.slice(0, 12).map(r => row(r, TR.dist(r.pos.offM) + ' off the course')).join('');
+      if (w.quiet.length) h += '<h4>Tracker gone quiet</h4>' + w.quiet.slice(0, 12).map(r => row(r, L.quiet(r))).join('');
+      if (w.stopped.length) h += '<h4>Not moving</h4>' + w.stopped.slice(0, 12).map(r => row(r, L.stopped(r))).join('');
+      if ((w.off || []).length) h += '<h4>Off the course</h4>' + w.off.slice(0, 12).map(r => row(r, L.off(r))).join('');
       if (w.late.length) h += '<h4>Late at the next checkpoint</h4>' + w.late.slice(0, 12).map(r => row(r, (r.pos.next.overdue ? 'Overdue' : 'Late') + ' at ' + esc(r.pos.next.name))).join('');
-      if (w.quiet.length) h += '<h4>Tracker gone quiet</h4>' + w.quiet.slice(0, 12).map(r => row(r, 'No fix')).join('');
       if (!any) h += '<p class="muted">Everyone on course is moving and accounted for.</p>';
+      if ((w.aid || []).length) h += `<details class="trk-aid"><summary>At aid stations (${w.aid.length}), within the usual stay</summary>` + w.aid.map(r => row(r, esc(L.aid(r)))).join('') + '</details>';
       courses.forEach(E => {
         const on = TR.leaders(E);
         if (!on.length) return;

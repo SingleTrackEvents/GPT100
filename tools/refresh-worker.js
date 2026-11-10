@@ -31,13 +31,19 @@
 //   GET  /archive/list       every copy kept: when, what, size
 //   GET  /archive/part?snap=…&part=n   one piece of a copy (gzip)
 //   POST /archive/now        take a copy of everything now, inside the window or not (the final copy after the race)
+//   Feed health (same timer, during the race window): a GPS event with no new positions for 20 minutes while the race
+//                            is on, the timing list unchanged for an hour while trackers still send, or a timing column
+//                            with no reads while columns further on have them. Each new problem goes to the phone (ntfy,
+//                            the NTFY_TOPIC secret), and again when it clears.
 //   Download them all with tools/archive_race.mjs. Setup and use: tools/ARCHIVE.md.
 //
 // Secret:    GITHUB_TOKEN   fine-grained key, this repository only, Actions read and write
 // Secret:    TIMING_URL     the RaceResult Simple API link for the timing list (optional, turns on /timing/)
 // Optional:  REPO, WORKFLOW, BRANCH, ALLOWED_ORIGIN (defaults below; several origins separated by commas)
 // Optional:  ARCHIVE_GPS (GPS event ids, separated by commas), ARCHIVE_FROM and ARCHIVE_TO (the race window, as
-//            ISO times with the offset), defaults below. Change them for next year's race.
+//            ISO times with the offset), defaults below. Change them for next year's race. The archive also follows every
+//            GPS event in the app's published config (SITE_CONFIG, tracking.gps), so an event added on the day is kept.
+// Secret:    NTFY_TOPIC     the ntfy topic for feed health alerts on the phone (optional; the weather watch's topic works)
 
 const DEFAULTS = {
   REPO: 'SingleTrackEvents/GPT100Safety',
@@ -46,7 +52,8 @@ const DEFAULTS = {
   ALLOWED_ORIGIN: 'https://singletrackevents.github.io,https://app.gpt100.com.au',
   ARCHIVE_GPS: '20261106gpt100,20261105gpt50',
   ARCHIVE_FROM: '2026-11-05T05:00:00+11:00',
-  ARCHIVE_TO: '2026-11-09T12:00:00+11:00'
+  ARCHIVE_TO: '2026-11-09T12:00:00+11:00',
+  SITE_CONFIG: 'https://singletrackevents.github.io/GPT100Safety/data/config.js'
 };
 const GPS_HOST = 'https://tulospalvelu.fi/gps/';  // the GPS tracking provider (GPS-seuranta)
 const COOLDOWN_MIN = 10;        // no new run within 10 minutes of the last one
@@ -279,17 +286,20 @@ async function archiveRun(env, force) {
   const db = env.DB;
   await ensureArchive(db);
   const out = [];
+  let timingBuf = null;
   const grab = async (kind, event, url, ttl) => {
     try {
       const res = await fetch(url, { headers: { 'User-Agent': 'GPT100Safety archive' }, cf: { cacheTtl: ttl, cacheEverything: true } });
       // An event set up but not started has no data.lst yet (403 or 404): nothing to keep.
       if (!res.ok) { out.push({ kind, event, status: res.status }); return; }
-      out.push(await keepCopy(db, kind, event, await res.arrayBuffer(), now));
+      const buf = await res.arrayBuffer();
+      if (kind === 'timing') timingBuf = buf;
+      out.push(await keepCopy(db, kind, event, buf, now));
     } catch (e) { out.push({ kind, event, error: e.message }); }
   };
   if (env.TIMING_URL) await grab('timing', '', env.TIMING_URL, 20);
   else out.push({ kind: 'timing', error: 'no TIMING_URL secret' });
-  const events = String(c.ARCHIVE_GPS || '').split(',').map(x => x.trim()).filter(x => /^[A-Za-z0-9_-]{1,80}$/.test(x));
+  const events = await archiveEvents(c);
   for (const ev of events) {
     await grab('gps-init', ev, GPS_HOST + ev + '/init.txt', 60);
     const last = await db.prepare('SELECT MAX(t) AS t FROM archive WHERE kind = ?1 AND event = ?2').bind('gps-data', ev).first();
@@ -299,7 +309,82 @@ async function archiveRun(env, force) {
       AND t NOT IN (SELECT t FROM archive WHERE kind = 'gps-data' AND event = ?1 AND part = 0 ORDER BY t DESC LIMIT ?2)
       AND t NOT IN (SELECT MAX(t) FROM archive WHERE kind = 'gps-data' AND event = ?1 GROUP BY CAST(t / ?3 AS INTEGER))`).bind(ev, ARCHIVE_GPS_KEEP, ARCHIVE_GPS_BLOCK).run();
   }
-  return { at: new Date(now).toISOString(), copies: out };
+  let health = [];
+  try { health = await feedHealth(env, db, now, events, timingBuf); await alertHealth(env, db, health); } catch (e) { health = [{ key: 'error', level: 'warn', text: 'Feed health check failed: ' + e.message }]; }
+  return { at: new Date(now).toISOString(), events, copies: out, health };
+}
+// The GPS events to keep: ARCHIVE_GPS, plus every event in the app's published config (tracking.gps).
+async function archiveEvents(c) {
+  const ids = new Set(String(c.ARCHIVE_GPS || '').split(',').map(x => x.trim()));
+  try {
+    const res = await fetch(c.SITE_CONFIG, { headers: { 'User-Agent': 'GPT100Safety archive' }, cf: { cacheTtl: 300, cacheEverything: true } });
+    const m = res.ok && (await res.text()).match(/\bgps:\s*\[([^\]]*)\]/);
+    if (m) for (const q of m[1].match(/['"][A-Za-z0-9_-]{1,80}['"]/g) || []) ids.add(q.slice(1, -1));
+  } catch (e) { }
+  return [...ids].filter(x => /^[A-Za-z0-9_-]{1,80}$/.test(x));
+}
+
+// ---------- Feed health (during the race window, on the archive's timer) ----------
+// The problems GPT100 2026 had, found by people late or not at all: a GPS event that stopped sending part way through
+// (81 min), a timing reader that never read anyone (Copper Mine Track, the whole race), and so on. The app's own Feed
+// health panel checks more (chip times ahead of the clock, a race with no chip times); this one reaches the phone.
+const TIMING_META = /^(place|rank|pos|position|overall|status|state|bib|bibno|no|number|startno|startnumber|name|fullname|firstname|lastname|surname|contest|contestname|race|racename|event|eventname|distance|category|course|gender|sex|age|agegroup|club|team|nation|country|time|nettime|chiptime|guntime|racetime|elapsed|diff|difference|gap|behind|id|pid)$/;
+function timingRows(j) {
+  let rows = Array.isArray(j) ? j : [], labels = null;
+  if (!Array.isArray(j) && j && typeof j === 'object') {
+    const d = j.data != null ? j.data : j.rows != null ? j.rows : Array.isArray(j.list) ? j.list : null;
+    if (Array.isArray(d)) rows = d; else if (d && typeof d === 'object') for (const v of Object.values(d)) if (Array.isArray(v)) rows = rows.concat(v);
+    const F = j.list && Array.isArray(j.list.Fields) ? j.list.Fields : null;
+    if (F) labels = F.map(f => typeof f === 'string' ? f : (f.Label || f.Expression || ''));
+  }
+  if (rows.length && Array.isArray(rows[0]) && labels) rows = rows.map(r => Object.fromEntries(labels.map((l, i) => [l, r[i]])));
+  return rows.filter(r => r && typeof r === 'object' && !Array.isArray(r));
+}
+async function feedHealth(env, db, now, events, timingBuf) {
+  const issues = [], mins = ms => Math.round(ms / 60e3);
+  const lastTiming = ((await db.prepare("SELECT MAX(t) AS t FROM archive WHERE kind = 'timing'").first()) || {}).t || 0;
+  const raceOn = lastTiming && now - lastTiming < 60 * 60e3;  // the timing list changed in the last hour
+  const gpsAge = {};
+  for (const ev of events) {
+    try {
+      const res = await fetch(GPS_HOST + ev + '/data.lst', { method: 'HEAD', headers: { 'User-Agent': 'GPT100Safety health' } });
+      const lm = res.ok ? Date.parse(res.headers.get('Last-Modified') || '') : NaN;
+      if (lm) gpsAge[ev] = now - lm;
+    } catch (e) { }
+  }
+  if (raceOn) for (const [ev, age] of Object.entries(gpsAge)) if (age > 20 * 60e3 && age < 12 * 3600e3)
+    issues.push({ key: 'gps-quiet:' + ev, level: 'bad', text: `GPS event ${ev}: no new positions for ${mins(age)} min while the race is on. It may have stopped: check the provider for another event the trackers send to, and add it to tracking.gps.` });
+  if (env.TIMING_URL && lastTiming && !raceOn && now - lastTiming < 12 * 3600e3 && Object.values(gpsAge).some(a => a < 10 * 60e3))
+    issues.push({ key: 'timing-still', level: 'warn', text: `Timing list: no change for ${mins(now - lastTiming)} min while trackers are still sending. Is the timing feed stuck?` });
+  if (timingBuf) {
+    try {
+      const rows = timingRows(JSON.parse(new TextDecoder().decode(timingBuf))), cols = [], n = {};
+      for (const r of rows) for (const [k, v] of Object.entries(r)) {
+        if (!(k in n)) { n[k] = 0; cols.push(k); }
+        const sv = String(v == null ? '' : v).trim();
+        if (/\d:\d\d/.test(sv) && !/^[0:.]+$/.test(sv)) n[k]++;
+      }
+      const pts = cols.filter(k => !TIMING_META.test(k.toLowerCase().replace(/[^a-z]/g, '')));
+      pts.forEach((k, i) => {
+        const further = Math.max(0, ...pts.slice(i + 1).map(x => n[x]));
+        if (!n[k] && further >= 10) issues.push({ key: 'no-reads:' + k, level: 'warn', text: `Timing list: no reads at ${k}, though ${further} runners have been read further on. Is that reader up?` });
+      });
+    } catch (e) { }
+  }
+  return issues;
+}
+async function alertHealth(env, db, issues) {
+  await db.prepare('CREATE TABLE IF NOT EXISTS health (key TEXT PRIMARY KEY, level TEXT NOT NULL, text TEXT NOT NULL, first INTEGER NOT NULL, last INTEGER NOT NULL)').run();
+  const now = Date.now(), prev = (await db.prepare('SELECT key, text FROM health').all()).results;
+  const fresh = issues.filter(i => !prev.some(p => p.key === i.key)), gone = prev.filter(p => !issues.some(i => i.key === p.key));
+  const ops = issues.map(i => db.prepare('INSERT INTO health (key, level, text, first, last) VALUES (?1, ?2, ?3, ?4, ?4) ON CONFLICT(key) DO UPDATE SET level = ?2, text = ?3, last = ?4').bind(i.key, i.level, i.text, now));
+  for (const g of gone) ops.push(db.prepare('DELETE FROM health WHERE key = ?1').bind(g.key));
+  if (ops.length) await db.batch(ops);
+  if (!env.NTFY_TOPIC) return;
+  const send = (title, body, priority, tags) => fetch('https://ntfy.sh/' + encodeURIComponent(env.NTFY_TOPIC), { method: 'POST', body,
+    headers: { Title: title, Priority: String(priority), Tags: tags, Click: 'https://singletrackevents.github.io/GPT100Safety/' } }).catch(() => { });
+  for (const i of fresh) await send(i.level === 'bad' ? 'GPT100 feed problem' : 'GPT100 feed warning', i.text, i.level === 'bad' ? 4 : 3, 'satellite');
+  for (const g of gone) await send('GPT100 feed problem cleared', 'Cleared: ' + g.text, 2, 'white_check_mark');
 }
 // The archive endpoints. They're behind the medical password (RC_PASSWORD) but, unlike Race Control, don't need the
 // app's site: tools/archive_race.mjs calls them from a computer.
@@ -313,7 +398,7 @@ async function archiveApi(req, env, url, c) {
     const r = await db.prepare('SELECT snap, t, kind, event, parts, size, sha FROM archive WHERE part = 0 ORDER BY t, kind, event').all();
     const tot = await db.prepare('SELECT COUNT(*) AS n, SUM(LENGTH(body)) AS bytes FROM archive').first();
     const c2 = cfg(env);
-    return json({ now: Date.now(), window: { from: c2.ARCHIVE_FROM, to: c2.ARCHIVE_TO }, gps: c2.ARCHIVE_GPS, stored: tot, copies: r.results });
+    return json({ now: Date.now(), window: { from: c2.ARCHIVE_FROM, to: c2.ARCHIVE_TO }, gps: (await archiveEvents(c2)).join(','), stored: tot, copies: r.results });
   }
   if (url.pathname === '/archive/part' && req.method === 'GET') {
     const row = await db.prepare('SELECT body FROM archive WHERE snap = ?1 AND part = ?2').bind(String(url.searchParams.get('snap') || ''), +url.searchParams.get('part') || 0).first();
