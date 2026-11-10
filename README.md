@@ -177,7 +177,7 @@ The app is live at **https://singletrackevents.github.io/GPT100Safety/** through
 
 It's a plain static site with no build step. Offline mode needs the site served over https, which GitHub Pages does.
 
-Everything a page needs to start comes from the app's own address: the map library (Leaflet) and the two fonts are kept in `lib/` and saved for offline with each build, so the apps don't wait on, or fail with, another site on race day. Only the map tiles beyond the saved topo map, the weather data and live what3words lookups come from elsewhere.
+Everything a page needs to start comes from the app's own address: the map library (Leaflet) and the two fonts are kept in `lib/` and saved for offline with each build, so the apps don't wait on, or fail with, another site on race day. Only live data comes from elsewhere: runner tracking and timing (through the Worker), the weather data, live what3words lookups, and map tiles beyond the saved topo map.
 
 **Checking a change before race week.** `node tools/crashtest/run.js quick` drives all four apps in a real browser with bad input, broken tracking and timing feeds and no signal, and lists anything that breaks (about 25 minutes; the full set, with random tapping, takes about an hour and a half). See [`tools/crashtest/README.md`](tools/crashtest/README.md).
 
