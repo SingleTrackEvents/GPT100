@@ -180,6 +180,8 @@
     const q = En.route[bi];
     // near: the stored words of the nearest course point (data/course-w3w.js), for when there's no signal.
     here = { stage, t: now, lat, lon, acc, ic: bi, gk: q[2], rk: Math.max(0, toRace(stage, q[2])), ele: q[3], offM: Math.round(bd), cp: [q[0], q[1]], w3w: null, near: En.nearW3w(lat, lon), w3wDone: false };
+    // Where you are, for the Track tab and the runners on the map: a tap on a runner says how far they are from you.
+    if (window.GPTTracking) GPTTracking.setMe({ lat, lon, t: now, course: En.id, km: q[2], offM: Math.round(bd) });
     render();
     lookupW3w(lat, lon);
   }

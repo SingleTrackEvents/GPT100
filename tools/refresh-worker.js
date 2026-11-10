@@ -328,7 +328,7 @@ async function archiveEvents(c) {
 // The problems GPT100 2026 had, found by people late or not at all: a GPS event that stopped sending part way through
 // (81 min), a timing reader that never read anyone (Copper Mine Track, the whole race), and so on. The app's own Feed
 // health panel checks more (chip times ahead of the clock, a race with no chip times); this one reaches the phone.
-const TIMING_META = /^(place|rank|pos|position|overall|status|state|bib|bibno|no|number|startno|startnumber|name|fullname|firstname|lastname|surname|contest|contestname|race|racename|event|eventname|distance|category|course|gender|sex|age|agegroup|club|team|nation|country|time|nettime|chiptime|guntime|racetime|elapsed|diff|difference|gap|behind|id|pid)$/;
+const TIMING_META = /^(place|rank|pos|position|overall|status|state|bib|bibno|no|number|startno|startnumber|name|fullname|firstname|lastname|surname|contest|contestname|race|racename|event|eventname|distance|category|course|gender|sex|age|agegroup|agegrp|agecategory|agecat|ageclass|ag|division|div|yob|yearofbirth|birthyear|club|team|nation|country|time|nettime|chiptime|guntime|racetime|elapsed|diff|difference|gap|behind|id|pid)$/;
 function timingRows(j) {
   let rows = Array.isArray(j) ? j : [], labels = null;
   if (!Array.isArray(j) && j && typeof j === 'object') {

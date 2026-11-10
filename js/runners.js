@@ -1,14 +1,14 @@
 // The Runners panel, shared by the map page (js/map.js) and the field app's Map tab (js/field.js) so the two stay the
 // same: a bib search, the Runner watch (not moving, off the course, late at the next checkpoint, tracker gone quiet),
 // the field by section, and the front and tail of each race. Show centres the map on a runner and opens their popup.
-// GPTRunners({ map, layer: () => runner layer, panel, button, key, extra(r), before(), opened(on), none, esc })
+// GPTRunners({ map, layer: () => runner layer, panel, button, key, extra(r), meHint, before(), opened(on), none, esc })
 // fills the panel and returns { open, render, show, bib }. A bib in the link (#bib=1047) opens on that runner.
 (function () {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const one = n => (Math.round(n * 10) / 10).toFixed(1);
   window.GPTRunners = function (o) {
     const G = window.GPT, courses = G.courses, TR = window.GPTTracking || null, P = o.panel, B = o.button, map = o.map;
-    const $ = s => P.querySelector(s), extra = r => o.extra ? o.extra(r) : '';
+    const $ = s => P.querySelector(s);
     P.innerHTML = `<div class="mp-panel-head"><h2>Runners</h2><button id="mpClose" class="mp-x" type="button" aria-label="Close">×</button></div>
     <form id="mpBibForm" class="mp-bib" autocomplete="off">
       <input id="mpBib" type="text" inputmode="numeric" placeholder="Bib, e.g. 1047" aria-label="Bib number">
@@ -27,8 +27,8 @@
       // Open the runner's own marker popup (runners on one spot are stacked, each with its own marker).
       let mk = null;
       if (layer) layer.eachLayer(l => { if (l.options && l.options.bib === r.bib) mk = l; });
-      if (mk) mk.openPopup();
-      else L.popup({ maxWidth: 280 }).setLatLng(at).setContent(`${TR.who(r)}<br>km ${one(TR.cur(r))}${p.est ? ' (estimated)' : ''}${p.offM > 60 ? ', ' + TR.dist(p.offM) + ' off the course' : ''}<br>${TR.where(r)}${extra(r)}`).openOn(map);
+      if (mk) { if (mk.getPopup()) mk.openPopup(); else mk.fire('click'); }  // (on a phone, the runner sheet)
+      else L.popup({ maxWidth: 290 }).setLatLng(at).setContent(TR.popup(r, { extra: o.extra, meHint: o.meHint })).openOn(map);
       $('#mpBibMsg').textContent = '';
       if (innerWidth < 700) open(false);
       return true;

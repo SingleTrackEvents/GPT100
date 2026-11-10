@@ -7,7 +7,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const one = x => (Math.round(x * 10) / 10).toFixed(1);
   const tf = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  let here = null, watchId = null, map = null, layer = null, runnerLayer = null, fs = null, RP = null;
+  let here = null, watchId = null, map = null, layer = null, runnerLayer = null, runnerSheet = null, fs = null, RP = null;
   // The race clock: the demo's when it's on (js/demo.js, ?demo=), so cut-offs and expected times can be rehearsed.
   const D0 = window.GPT100_DEMO ? Date.parse(GPT100_DEMO.contests['GPT100 Miler'].start + ':00+11:00') : 0;
   const clock = () => window.GPTDemo && D0 ? D0 + GPTDemo.simNow() : Date.now();
@@ -287,6 +287,7 @@
   }
   function render() {
     if (!here) return;
+    tellMe();
     $('fdOut').hidden = false;
     const { E, r } = here, g = here.gps, S = situation();
     here.S = S;
@@ -369,12 +370,18 @@
     if (!TR.ready()) return `<div class="card trk"><h3>Runners near you</h3><p class="muted">${esc(TR.status())}</p></div>`;
     const back = TR.near(E, r.km, 6, 30).filter(x => TR.cur(x) <= r.km).sort((a, b) => TR.cur(b) - TR.cur(a)).slice(0, 6);
     const ahead = TR.near(E, r.km, 6, 30).filter(x => TR.cur(x) > r.km).sort((a, b) => TR.cur(a) - TR.cur(b)).slice(0, 3);
-    const row = (x, dir) => `<div class="row"><span>${TR.who(x)}<span class="sub">${TR.dist(Math.abs(TR.cur(x) - r.km) * 1000)} ${dir}${x.pos.est ? ' (estimated)' : ''}${x.pos.stopped ? ', <b>not moving</b>' : ''}. ${TR.seen(x)}</span></span></div>`;
+    // When they'd reach you at their pace, as their popup on the map says.
+    const due = x => { const m = TR.fromMe && TR.fromMe(x); return m && m.eta && m.eta > Date.now() ? `, with you about <b>${TR.clockAt(m.eta)}</b>` : ''; };
+    const row = (x, dir) => `<div class="row"><span>${TR.who(x)}<span class="sub">${TR.dist(Math.abs(TR.cur(x) - r.km) * 1000)} ${dir}${x.pos.est ? ' (estimated)' : ''}${x.pos.stopped ? ', <b>not moving</b>' : ''}${dir === 'back' ? due(x) : ''}. ${TR.seen(x)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(x.bib)}">Show</button></div>`;
     return `<div class="card trk"><h3>Runners near you</h3>` +
       (back.length ? `<p class="fd-hint">Coming towards you (nearest first):</p>` + back.map(x => row(x, 'back')).join('') : '<p class="muted">No tracked runners within 6 km behind you.</p>') +
       (ahead.length ? `<p class="fd-hint">Just past you:</p>` + ahead.map(x => row(x, 'ahead')).join('') : '') +
       `<p class="trk-src">${esc(TR.status())}</p></div>`;
   }
+  // Before the app knows where you are, a runner's popup says how to find out how far they are from you.
+  const ME_HINT = 'Tap ◎ to see how far they are from you.';
+  // Where you are, for the runners' popups and lists (js/tracking.js): from every fix, a typed km or your last location.
+  const tellMe = () => { if (window.GPTTracking) GPTTracking.setMe(here ? { lat: here.lat, lon: here.lon, t: here.t, course: here.E.id, km: here.r.km, offM: here.offM } : null); };
   if (window.GPTTracking) GPTTracking.onUpdate(() => { drawRunners(); if (RP) RP.render(); if (here && here.S && here.S.tier !== 'far' && here.S.tier !== 'long' && $('fdGrade')) $('fdGrade').innerHTML = (window.GPTTrack ? GPTTrack.card(here.r, here.E, { vehicle: here.w }) : '') + runnersHTML(here.E, here.r); });
   function drawRunners() {
     if (!runnerLayer || !window.GPTTracking) return;
@@ -382,7 +389,7 @@
     let open = null;
     runnerLayer.eachLayer(l => { if (l.isPopupOpen && l.isPopupOpen()) open = l.options.bib; });
     runnerLayer.clearLayers();
-    MAIN.courses.forEach(E => GPTTracking.draw(runnerLayer, E));
+    MAIN.courses.forEach(E => GPTTracking.draw(runnerLayer, E, null, null, { meHint: ME_HINT, sheet: runnerSheet }));
     if (open != null) runnerLayer.eachLayer(l => { if (l.options.bib === open && l.getPopup()) { const p = l.getPopup(); p.options.autoPan = false; l.openPopup(); p.options.autoPan = true; } });
   }
 
@@ -504,7 +511,8 @@
     if (window.GPTHelipads) GPTHelipads.overlay(map, true);
     if (window.GPTTrack) { GPTBaseMap.overlay(map, 'Emergency markers', GPTTrack.overlay(['emergency']), false); GPTBaseMap.overlay(map, 'Camps and assembly areas', GPTTrack.overlay(['camp', 'assembly']), false); }
     trailLine = L.polyline([], { color: '#7a3db8', weight: 3, opacity: .9, dashArray: '1 6', lineCap: 'round', interactive: false }).addTo(map);
-    if (window.GPTTracking) { runnerLayer = L.layerGroup().addTo(map); drawRunners(); }
+    // On a phone a tap on a runner opens a sheet at the foot of the map card, not a popup (js/tracking.js).
+    if (window.GPTTracking) { runnerLayer = L.layerGroup().addTo(map); runnerSheet = GPTTracking.sheet($('fdMap').parentElement, map); drawRunners(); }
     layer = L.layerGroup().addTo(map);
     map.on('click', e => profile.showLL(e.latlng.lat, e.latlng.lng, map.getZoom()));
     // A small location button on the map, as in Google Maps.
@@ -718,7 +726,7 @@
   setTab(tab);
   // The Runners panel on the Map tab, as on the map page (js/runners.js): a sheet over the app on a phone, beside the
   // map on a big screen. Show goes to the Map tab first; field.html#bib=1047 opens on that runner.
-  if (map && window.GPTRunners) RP = GPTRunners({ map, layer: () => runnerLayer, panel: $('mpPanel'), button: $('fdRunners'), esc: true,
+  if (map && window.GPTRunners) RP = GPTRunners({ map, layer: () => runnerLayer, panel: $('mpPanel'), button: $('fdRunners'), esc: true, meHint: ME_HINT,
     before: () => { if (tab !== 'map') setTab('map'); map.invalidateSize(); if (pendingFit) { map.fitBounds(...pendingFit); pendingFit = null; } },
     opened: on => { if (on && fs && fs.on()) fs.toggle(); document.body.classList.toggle('fd-rp-on', on); },
     none: `<p class="muted">Live tracking isn't set up for this race yet. Once the GPS trackers or timing chips are linked, every runner shows here and on the map. To see how it looks, <a href="field.html?demo=1">run the demo</a>: made-up runners on the course, GPS and chips both.</p>` });
@@ -757,7 +765,7 @@
     const bad = isNaN(km) ? 'That isn\'t a km. Type a number, like 12.5.' : km > len ? `${what} is ${one(len)} km. Type a km from 0 to ${one(len)}.` : '';
     if (!bad) { msg(''); fromKm(km); return; }
     $('fdKm').classList.add('rc-flash'); setTimeout(() => $('fdKm').classList.remove('rc-flash'), 2600);
-    here = null; mapNow = null; keep(); sendLinks();
+    here = null; mapNow = null; keep(); sendLinks(); tellMe();
     $('fdOut').hidden = true; if (layer) layer.clearLayers(); if (profile) profile.setHere(null); home();
     msg(bad + ' No location to send yet.', true);
   });

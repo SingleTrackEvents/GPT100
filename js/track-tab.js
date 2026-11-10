@@ -82,6 +82,24 @@
     return { in: rs.find(x => !/\(out\)$/.test(x.name)) || null, out: rs.find(x => /\(out\)$/.test(x.name)) || null };
   }
 
+  // The runner's age category, when the timing list has one ("M 60 to 69").
+  const age = o => { const tr = TR(), a = tr && tr.ageOf ? tr.ageOf(o.r) : ''; return a ? ' · ' + esc(a) : ''; };
+  // How far a runner is from you along the course, with the climb between you and when they'd reach you (js/tracking.js;
+  // the Map tab's ◎ says where you are). The time comes from their splits so far, where there's a pace to go by.
+  const ME_HINT = 'Tap ◎ on the map to see how far they are from you.';
+  function meLine(o, hint) {
+    const tr = TR(); if (!tr || !tr.meLine || !o.r.pos) return '';
+    const m = tr.fromMe(o.r), E = m && m.dir === 'coming' && o.S ? etas(o) : null;
+    return tr.meLine(o.r, { eta: E && E.p != null ? timeAt(o.S, toRace(o.S, m.myKm), E.p) : undefined, hint: hint === false ? '' : ME_HINT });
+  }
+  // The next point on their race, how far it is and when they're expected: "Next: Halls Gap in 4.2 km, about Fri 14:35".
+  function nextLine(o) {
+    const p = o.r.pos, S = o.S;
+    if (!p || !S || o.c && o.c.status) return '';
+    const km = TR().cur(o.r), nx = S.points.find(k => k.gk > km + 0.1), E = nx && etas(o), tn = E && E.at(nx);
+    return nx ? `Next: <b>${esc(nx.name)}</b> in ${one(Math.max(0, nx.gk - km))} km${tn ? `, about ${at(tn)}` : ''}` : '';
+  }
+
   // ---------- following ----------
   let follow = store.get('follow', []).map(String);
   const isOn = bib => follow.includes(String(bib));
@@ -96,20 +114,22 @@
   // ---------- the cards ----------
   function card(o) {
     const p = o.r.pos, s = state(o), S = o.S, now = Date.now(), len = lenOf(o), t0 = startT(o), E = etas(o), fr = finishRead(o);
-    let h = `<div class="tk-head"><div><p class="tk-name">${esc(o.name || 'Bib ' + o.bib)}</p><p class="tk-sub">Bib ${esc(o.bib)}${o.label ? ' · ' + esc(o.label) : ''}</p></div><span class="tk-pill ${s.k}">${esc(s.text)}</span></div>`;
+    let h = `<div class="tk-head"><div><p class="tk-name">${esc(o.name || 'Bib ' + o.bib)}</p><p class="tk-sub">Bib ${esc(o.bib)}${o.label ? ' · ' + esc(o.label) : ''}${age(o)}</p></div><span class="tk-pill ${s.k}">${esc(s.text)}</span></div>`;
     if (fr && t0) h += `<p class="tk-big">${hmm(fr.t - t0)}</p><p class="tk-line">Crossed the finish ${at(fr.t)}.</p>`;
     else if (s.k === 'out') h += `<p class="tk-line">${p && p.chipAt ? `Last read at ${esc(p.chipAt.name)}, ${at(p.chipAt.t)}.` : ''}</p>`;
     else if (p) {
       const km = TR().cur(o.r), rk = raceKm(o, km);
       h += `<p class="tk-big">km ${one(rk)}${len ? `<small> of ${one(len)}</small>` : ''}</p>`;
       if (p.est) h += `<p class="tk-line">${p.est.capped ? `Somewhere between km ${one(raceKm(o, p.est.fromKm))} and ${esc(p.est.to)}, at their pace` : 'Likely about here now, at their pace'}.</p>`;
+      const ml = meLine(o);
+      if (ml) h += `<p class="tk-line tk-me">${ml}</p>`;
       h += `<p class="tk-src">Last fix: ${source(p)}</p>`;
       if (t0 && now > t0) h += `<p class="tk-line">Running for ${hmm(now - t0)}.</p>`;
       // Next point and the finish.
       if (S && E) {
         const P = S.points, nx = P.find(k => k.gk > km + 0.1), fin = P[P.length - 1];
         const tn = nx && E.at(nx), tf = E.p != null ? E.at(fin) : null;
-        if (nx && tn) h += `<p class="tk-line">Next: <b>${esc(nx.name)}</b> (km ${one(nx.km)}), expected about <b>${at(tn)}</b>.</p>`;
+        if (nx && tn) h += `<p class="tk-line">Next: <b>${esc(nx.name)}</b> (km ${one(nx.km)}), ${one(Math.max(0, nx.gk - km))} km to go, expected about <b>${at(tn)}</b>.</p>`;
         if (tf && nx !== fin) h += `<p class="tk-line">Finish about <b>${at(tf)}</b>, a time of about ${hmm(tf - t0)}.</p>`;
       }
     } else if (S) h += `<p class="tk-line">Starts ${at(S.points[0].ft)} at ${esc(S.points[0].name)}.</p>`;
@@ -154,7 +174,7 @@
   }
   function drawHits() {
     const q = $('tkFind').value, hs = hits(q);
-    $('tkHits').innerHTML = !q.trim() ? '' : hs.length ? hs.map(o => `<div class="tk-hit"><span><b>${esc(o.bib)}</b> ${esc(o.name)}<small>${esc(o.label || '')}${o.label ? ' · ' : ''}${esc(state(o).text)}</small></span>${star(o.bib)}</div>`).join('')
+    $('tkHits').innerHTML = !q.trim() ? '' : hs.length ? hs.map(o => `<div class="tk-hit"><span><b>${esc(o.bib)}</b> ${esc(o.name)}<small>${esc(o.label || '')}${o.label ? ' · ' : ''}${esc(state(o).text)}${age(o)}</small></span>${star(o.bib)}</div>`).join('')
       : `<p class="muted">${live() ? 'No runner with that bib or name.' : 'The runner list loads once live tracking is on.'}</p>`;
   }
   const star = bib => `<button type="button" class="btn small${isOn(bib) ? ' tk-off' : ''}" data-follow="${esc(bib)}">${isOn(bib) ? 'Following' : 'Follow'}</button>`;
@@ -225,7 +245,8 @@
     let changed = false;
     follow.forEach(bib => {
       const o = live() ? info(bib) : null;
-      if (o) { const html = card(o); out.push(html); saved[bib] = { t: Date.now(), html }; changed = true; }
+      // Saved without the from-you line: that's only true while you're standing there.
+      if (o) { const html = card(o); out.push(html); saved[bib] = { t: Date.now(), html: html.replace(/<p class="tk-line tk-me">.*?<\/p>/, '') }; changed = true; }
       else if (saved[bib]) out.push(saved[bib].html.replace('<div class="tk-head">', `<p class="tk-saved">Saved ${at(saved[bib].t)}: no live update since.</p><div class="tk-head">`));
       else out.push(`<section class="fd-card tk-card"><div class="tk-head"><div><p class="tk-name">Bib ${esc(bib)}</p><p class="tk-sub">${live() ? 'Not in the tracking or timing lists.' : 'Waiting for live tracking.'}</p></div></div><div class="tk-btns"><button type="button" class="btn small tk-off" data-follow="${esc(bib)}">Unfollow</button></div></section>`);
     });
@@ -293,27 +314,46 @@
   // Markers are kept between refreshes and moved in place. Clearing and redrawing them all every few seconds made the
   // map flicker, could break a pinch or drag under way, and reopened any popup, which panned the map back to it.
   // An open popup only pans the map when it opens; after that it follows its runner without moving the map.
-  // items: { id, ll, kind (a new marker when it changes), look (restyle(mk) when it changes), make(), restyle, html }.
+  // items: { id, ll, kind (a new marker when it changes), look (restyle(mk) when it changes), make(), restyle, html() }.
+  // html() is only run for a popup that's open (when it opens, and on each refresh while it stays open), so a few
+  // hundred runners cost nothing until one is tapped.
+  // On a phone a tap opens the runner sheet at the foot of the map card instead of a popup (js/tracking.js sheet()).
+  let SH = null;
+  const sheetOn = () => !!(SH && SH.narrow());
+  const openSheet = (marks, id) => SH.open(id, () => { const e = marks.get(id); return e ? e.html() : ''; });
   function sync(marks, lg, items) {
-    const seen = new Set();
+    const seen = new Set(), sh = sheetOn();
     for (const it of items) {
       seen.add(it.id);
+      const kind = it.kind + (sh ? ' sheet' : '');
       let e = marks.get(it.id);
-      if (e && e.kind !== it.kind) { lg.removeLayer(e.mk); marks.delete(it.id); e = null; }
+      if (e && e.kind !== kind) { lg.removeLayer(e.mk); marks.delete(it.id); e = null; }
       if (!e) {
-        const mk = it.make().bindPopup(it.html, { autoPan: true });
-        mk.on('popupopen', ev => { ev.popup.options.autoPan = false; }).on('popupclose', ev => { ev.popup.options.autoPan = true; });
-        marks.set(it.id, { mk: mk.addTo(lg), kind: it.kind, look: it.look, html: it.html, ll: it.ll });
+        const mk = it.make(), ne = { mk, kind, look: it.look, html: it.html, shown: '', ll: it.ll };
+        if (sh) mk.on('click', () => openSheet(marks, it.id));
+        else {
+          mk.bindPopup(() => (ne.shown = ne.html()), { autoPan: true, maxWidth: 290 });
+          mk.on('popupopen', ev => { ev.popup.options.autoPan = false; }).on('popupclose', ev => { ev.popup.options.autoPan = true; });
+        }
+        mk.addTo(lg); marks.set(it.id, ne);
         continue;
       }
       if (e.ll[0] !== it.ll[0] || e.ll[1] !== it.ll[1]) { e.mk.setLatLng(it.ll); e.ll = it.ll; }
       if (e.look !== it.look) { it.restyle(e.mk); e.look = it.look; }
-      if (e.html !== it.html) { e.mk.setPopupContent(it.html); e.html = it.html; }
+      e.html = it.html;
+      if (e.mk.isPopupOpen() && e.html() !== e.shown) e.mk.getPopup().update();
     }
     for (const [id, e] of marks) if (!seen.has(id)) { lg.removeLayer(e.mk); marks.delete(id); }
   }
+  // What a tap on a runner shows: who they are, their race km, how far they are from you, the next point and the fix.
+  function popHTML(o, extra) {
+    const p = o.r.pos, km = TR().cur(o.r), ml = meLine(o), nl = nextLine(o), fin = o.c && o.c.status === 'finished';
+    return `<b>${esc(o.name || 'Bib ' + o.bib)}</b><br>Bib ${esc(o.bib)}${o.label ? ' · ' + esc(o.label) : ''}${age(o)}<br>${fin ? 'Finished' : `km ${one(raceKm(o, km))}${p.est ? ' (likely, at their pace)' : ''}`}` +
+      (ml && !fin ? '<br>' + ml : '') + (nl ? '<br>' + nl : '') + `<br><span class="muted">${source(p)}</span>` + (extra || '');
+  }
   const everyMarks = new Map(), folMarks = new Map();
-  const bibIcon = (bib, c, faint) => L.divIcon({ className: '', html: `<div class="trk-mk tk-ev${faint ? ' est' : ''}" style="--c:${c}">${esc(bib)}</div>`, iconSize: [30, 18], iconAnchor: [15, 9] });
+  const bibIcon = (bib, c, faint, sel) => L.divIcon({ className: '', html: `<div class="trk-mk tk-ev${faint ? ' est' : ''}${sel ? ' sel' : ''}" style="--c:${c}">${esc(bib)}</div>`, iconSize: [30, 18], iconAnchor: [15, 9] });
+  const picked = id => sheetOn() && SH.id() === String(id);
   function drawEveryone(m) {
     if (!everyLayer) {
       // Their own pane: above the course and its aid stations, under the followed runners' bib markers.
@@ -326,6 +366,9 @@
       // Swap dots and bib numbers as the map zooms past BIB_ZOOM.
       m.on('zoomend', () => { if ((m.getZoom() >= BIB_ZOOM) !== everyZoom) drawEveryone(m); });
       m.getContainer().addEventListener('click', e => { const b = e.target.closest('button[data-every-follow]'); if (b) { toggle(b.dataset.everyFollow); m.closePopup(); } });
+      // The runner sheet (phones) sits in the map card, outside the map: its Follow button is caught there.
+      const host = m.getContainer().parentElement;
+      if (TR() && TR().sheet) { SH = TR().sheet(host, m); host.addEventListener('click', e => { const b = e.target.closest('.trk-sheet button[data-every-follow]'); if (b) { toggle(b.dataset.everyFollow); SH.refresh(); } }); }
     }
     const box = everyCtl.getContainer();
     if (!live()) { box.hidden = true; sync(everyMarks, everyLayer, []); return; }
@@ -342,17 +385,19 @@
     const shown = everyOn ? all.filter(o => !hidden.includes(groupOf(o).id)) : [];
     const spot = o => o.r.pos.est ? [o.r.pos.est.lat, o.r.pos.est.lon] : [o.r.pos.lat, o.r.pos.lon];
     sync(everyMarks, everyLayer, shown.map(o => {
-      const g = groupOf(o), p = o.r.pos, ll = spot(o), km = TR().cur(o.r), faint = !!(p.est || p.stale);
-      // Others on the same spot (an aid station, a bunch on the climb), named in the popup as their bibs overlap.
-      const near = bibs ? shown.filter(x => x !== o && window.GPT.metres(spot(x), ll) < 40).map(x => x.bib).sort((a, b) => a - b) : [];
+      const g = groupOf(o), p = o.r.pos, ll = spot(o), faint = !!(p.est || p.stale);
+      const sel = picked(o.r.id), dot = { radius: sel ? 9 : 6, weight: sel ? 4 : 2, color: sel ? '#111' : '#fff', fillColor: g.color, fillOpacity: faint ? 0.45 : 1 };
       return {
-        id: o.r.id, ll, kind: bibs ? 'bib' : 'dot', look: g.color + faint,
-        make: () => bibs ? L.marker(ll, { pane: 'tkEvery', icon: bibIcon(o.bib, g.color, faint) })
-          : L.circleMarker(ll, { pane: 'tkEvery', radius: 6, weight: 2, color: '#fff', fillColor: g.color, fillOpacity: faint ? 0.45 : 1, bubblingMouseEvents: false }),
-        restyle: mk => bibs ? mk.setIcon(bibIcon(o.bib, g.color, faint)) : mk.setStyle({ fillColor: g.color, fillOpacity: faint ? 0.45 : 1 }),
-        html: `<b>${esc(o.name || 'Bib ' + o.bib)}</b><br>Bib ${esc(o.bib)}${o.label ? ' · ' + esc(o.label) : ''}<br>km ${one(raceKm(o, km))}${p.est ? ' (likely, at their pace)' : ''}<br><span class="muted">${source(p)}</span>` +
-          (near.length ? `<br><span class="muted">Also here: ${near.slice(0, 15).map(b => 'bib ' + esc(b)).join(', ')}${near.length > 15 ? ` and ${near.length - 15} more` : ''}</span>` : '') +
-          `<br><button type="button" class="btn small tk-pop-follow" data-every-follow="${esc(o.bib)}">${isOn(o.bib) ? 'Unfollow' : 'Follow'}</button>`
+        id: o.r.id, ll, kind: bibs ? 'bib' : 'dot', look: g.color + faint + sel,
+        make: () => bibs ? L.marker(ll, { pane: 'tkEvery', icon: bibIcon(o.bib, g.color, faint, sel) })
+          : L.circleMarker(ll, Object.assign({ pane: 'tkEvery', bubblingMouseEvents: false }, dot)),
+        restyle: mk => bibs ? mk.setIcon(bibIcon(o.bib, g.color, faint, sel)) : mk.setStyle(dot),
+        html: () => {
+          // Others on the same spot (an aid station, a bunch on the climb), named in the popup as their bibs overlap.
+          const near = bibs ? shown.filter(x => x !== o && window.GPT.metres(spot(x), ll) < 40).map(x => x.bib).sort((a, b) => a - b) : [];
+          return popHTML(o, (near.length ? `<br><span class="muted">Also here: ${near.slice(0, 15).map(b => 'bib ' + esc(b)).join(', ')}${near.length > 15 ? ` and ${near.length - 15} more` : ''}</span>` : '') +
+            `<br><button type="button" class="btn small tk-pop-follow" data-every-follow="${esc(o.bib)}">${isOn(o.bib) ? 'Unfollow' : 'Follow'}</button>`);
+        }
       };
     }));
   }
@@ -368,17 +413,23 @@
     if (live()) follow.forEach((bib, k) => {
       const o = info(bib), p = o && o.r.pos;
       if (!p || (o.c && o.c.status && o.c.status !== 'finished')) return;
-      const ll = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon], km = TR().cur(o.r), cls = `trk-mk tk-mk${p.est ? ' est' : ''}${p.stale ? ' stale' : ''}`;
+      const ll = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon], cls = `trk-mk tk-mk${p.est ? ' est' : ''}${p.stale ? ' stale' : ''}${picked(bib) ? ' sel' : ''}`;
       const icon = () => L.divIcon({ className: '', html: `<div class="${cls}">${esc(bib)}</div>`, iconSize: [30, 18], iconAnchor: [15, 9 - 20 * (k % 3)] });
       items.push({ id: bib, ll, kind: 'fol', look: cls + (k % 3), make: () => L.marker(ll, { icon: icon(), zIndexOffset: 800 }), restyle: mk => mk.setIcon(icon()),
-        html: `<b>${esc(o.name || 'Bib ' + bib)}</b><br>Bib ${esc(bib)}${o.label ? ' · ' + esc(o.label) : ''}<br>${o.c && o.c.status === 'finished' ? 'Finished' : `km ${one(raceKm(o, km))}${p.est ? ' (likely, at their pace)' : ''}`}<br><span class="muted">${source(p)}</span>` });
+        html: () => popHTML(o) });
     });
     sync(folMarks, layer, items);
   }
   function showOnMap(bib) {
     const o = info(bib), p = o && o.r.pos; if (!p) return;
     GPTRunner.setTab('map');
-    setTimeout(() => { const m = GPTRunner.map(); if (!m) return; drawMap(); m.setView(p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon], 14); }, 80);
+    setTimeout(() => {
+      const m = GPTRunner.map(); if (!m) return;
+      drawMap(); m.setView(p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon], 14);
+      // Their details with it: how far they are from you, the next point and the fix.
+      const e = folMarks.get(String(bib)); if (!e) return;
+      if (sheetOn()) openSheet(folMarks, String(bib)); else if (e.mk.getPopup()) e.mk.openPopup();
+    }, 80);
   }
 
   // ---------- start ----------

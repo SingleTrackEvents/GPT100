@@ -630,6 +630,21 @@ details.trk-aid { margin: 10px 0 0; }
 details.trk-aid summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .trk-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
 .trk-stale { color: var(--amber); font-weight: 600; }
+/* A runner's age category beside their name, and how far they are from you (js/tracking.js) */
+.trk-age { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .2px; padding: 1px 7px; border-radius: 10px; background: var(--chip-bg); color: var(--ink); white-space: nowrap; vertical-align: 1px; }
+.trk-me { display: block; margin: 5px 0; padding: 6px 8px; border-left: 3px solid var(--walk); background: var(--tint-blue); border-radius: 0 6px 6px 0; line-height: 1.35; }
+.trk-me-hint { border-left-color: var(--line); background: var(--soft); color: var(--muted); font-size: 12px; }
+.trk-me + br { display: none; }
+.tk-me .trk-me { margin: 0; }
+/* The runner sheet: on a phone a tap on a runner opens this at the foot of the map card, not a popup (js/tracking.js) */
+.fd-mapcard, .mp-mapbox { position: relative; }
+.trk-sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1002; max-height: 80%; overflow-y: auto; overscroll-behavior: contain; background: var(--paper); color: var(--ink); border-top: 3px solid var(--walk); box-shadow: 0 -8px 20px rgba(0,0,0,.25); padding: 12px 50px 14px 14px; font-size: 14px; line-height: 1.5; }
+.trk-sheet[hidden] { display: none; }
+.trk-sheet-x { position: absolute; top: 2px; right: 2px; width: 46px; height: 46px; border: 0; background: none; font-size: 28px; line-height: 1; color: var(--ink); cursor: pointer; }
+.trk-sheet-body > b:first-child { font-size: 16px; }
+.trk-sheet .trk-me { font-size: 15px; margin: 8px 0; }
+.trk-sheet .btn.small { min-height: 44px; margin-top: 8px; }
+.trk-mk.sel { box-shadow: 0 0 0 3px var(--walk), 0 0 0 6px rgba(255,255,255,.9), 0 2px 6px rgba(0,0,0,.6); }
 .trk-mk { min-width: 30px; height: 18px; padding: 0 4px; border-radius: 9px; background: #1666c9; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); font: 700 10px/14px var(--body); text-align: center; white-space: nowrap; }
 .trk-mk.stale { background: #9a9a9a; }
 .trk-mk.stopped { background: var(--red); }

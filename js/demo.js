@@ -136,7 +136,7 @@
   }
 
   // ---------- the timing list (RaceResult shape) ----------
-  // As the timing team's list sends it: a plain array of rows, the contest by name, Status and Place (DNF in both),
+  // As the timing team's list sends it: a plain array of rows, the contest by name, Status and Place (DNF in both), Gender, an Age Group,
   // one column per timing reader (In and Out at the aid stations; no reader at the Ridgeline water point) as a
   // time of day, D:HH:MM:SS once past midnight of the start day, then Time (elapsed) and Diff. The demo's start day is
   // today's, so it sets tracking.chipDay to anchor them (on race day the start days come from data/races.js).
@@ -145,6 +145,9 @@
     ['JimmyCreekOut', 'Jimmy Creek Camp', 1], ['YarramGap', 'Yarram Gap'], ['GriffinFirelineIN', 'Griffin'], ['GriffinFirelineOut', 'Griffin', 1], ['CassidysGap', 'Cassidys'], ['BainggugCPIN', 'Bainggug'],
     ['BainggugCPOut', 'Bainggug', 1], ['Finish']];
   const FEED_NAME = { 'GPT100 Miler': 'GPT100 Solo/Pairs' };
+  // An age group for each made-up runner (the event's own groups, as an Age Group column would send them), so the
+  // demo shows the age category on every runner.
+  const AGE_GROUPS = ['Open', 'Masters', 'Open', '50-59', 'Open', 'Masters', '60-69', 'Open', 'Masters', 'Youth', '50-59', 'Open', 'Legends'];
   const mel = ms => ms + 11 * 3600e3, two = n => String(n).padStart(2, '0');
   const hms = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}`; };
   function timing() {
@@ -156,7 +159,7 @@
     const fin = {}, rows = RUN.map(r => {
       const km = kmAt(r, now), dnf = r.kase === 'dnf' && now >= r.tCase;
       const miss = r.kase === 'missed' ? COLS.map(c => c[1] && kmOf(c[1])).find(k => k != null && k >= r.caseKm - 0.05) : null;
-      const row = { Place: dnf ? 'DNF' : '', Status: dnf ? 'DNF' : '', Bib: r.bib, Name: r.name.replace(/^(.*) (\S+)$/, '$2, $1'), Contest: FEED_NAME[r.contest] || 'GPT ' + r.contest, Gender: +r.bib % 3 ? 'M' : 'F' };
+      const row = { Place: dnf ? 'DNF' : '', Status: dnf ? 'DNF' : '', Bib: r.bib, Name: r.name.replace(/^(.*) (\S+)$/, '$2, $1'), Contest: FEED_NAME[r.contest] || 'GPT ' + r.contest, Gender: +r.bib % 3 ? 'M' : 'F', AgeGroup: AGE_GROUPS[(+r.bib * 7) % AGE_GROUPS.length] };
       let last = 0;
       for (const [col, name, out] of COLS) {
         const k = col === 'Start' ? r.k0 : col === 'Finish' ? r.k1 : kmOf(name);

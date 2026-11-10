@@ -459,7 +459,110 @@
     const h = (T.url ? a(T.url, T.label || 'Live tracking') : '') + (T.results ? ' ' + a(T.results, 'Official results') : '');
     return h ? `<p class="trk-links">${h}</p>` : '';
   }
-  const who = r => `<b>Bib ${esc(r.bib || '?')}</b> ${esc(r.name)}`;
+  // Who a runner is: bib, name, and their age category when the timing list has one (js/timing.js), with their gender
+  // letter in front ("M 60 to 69"). Other runners rarely note a bib number, so "the bloke in his sixties" is how a
+  // Safety Officer gets pointed to the right runner.
+  const ageOf = r => { const c = r && r.chip; return c && c.age ? (c.gender === 'M' || c.gender === 'F' ? c.gender + ' ' : '') + c.age : ''; };
+  const ageTag = r => { const a = ageOf(r); return a ? ` <span class="trk-age">${esc(a)}</span>` : ''; };
+  const who = r => `<b>Bib ${esc(r.bib || '?')}</b> ${esc(r.name)}${ageTag(r)}`;
+
+  // ---------- you: how far a runner is from the person holding the phone ----------
+  // The apps that know where you are (the field app's Where am I?, the runner app's ◎) say so with setMe({ lat, lon, t }),
+  // and with { course, km, offM } too when they've already placed you on a course, so the popups agree with the km on screen.
+  // Then a tap on any runner says how far they are from you along the course, with the climb between you, and when
+  // they'd reach you at their pace. Feedback from the 2026 Safety Officers: to tell a supporter how far out their
+  // runner was, you had to tap the course beside the runner instead of the runner.
+  const ME_ON_M = 500, ME_OLD_MIN = 10, ME_MAX_H = 6;
+  let ME = null;
+  function setMe(m) {
+    const ok = m && isFinite(m.lat) && isFinite(m.lon) && m.lat !== null && m.lon !== null;
+    const same = ok && ME && ME.lat === +m.lat && ME.lon === +m.lon && ME.km === m.km && ME.course === m.course;
+    if (same) ME.t = m.t || ME.t;
+    else ME = ok ? { lat: +m.lat, lon: +m.lon, t: m.t || Date.now(), course: m.course, km: m.km, offM: m.offM, on: new Map() } : null;
+    // The maps redraw once the caller has finished what it was doing.
+    setTimeout(() => S.listeners.forEach(fn => { try { fn(); } catch (e) { } }), 0);
+  }
+  const me = () => ME && Date.now() - ME.t < ME_MAX_H * 3600e3 ? ME : null;
+  // A runner's pace fraction: from their chip reads, else from their own GPS fixes over the last while, else mid-pack.
+  function paceOf(r) {
+    if (r.chip && r.chip.reads.length >= 2) return fracOf(r.chip);
+    const P = r.pts, z = P && P[P.length - 1], E = r.pos && r.pos.course;
+    if (!z || !E) return 0.5;
+    if (r.gpsPace && r.gpsPace.t === z[0] && r.gpsPace.E === E) return r.gpsPace.f;
+    let f = 0.5;
+    const a = P.find(q => z[0] - q[0] <= 2 * 3600) || P[0];
+    if (z[0] - a[0] >= 20 * 60) {
+      const ka = E.route[E.snap(a[1], a[2]).ic][2], kb = r.pos.src === 'gps' ? r.pos.km : E.route[E.snap(z[1], z[2]).ic][2], M = model(E);
+      if (kb - ka >= 0.5) { const fast = M.fast(ka, kb), slow = M.slow(ka, kb); if (slow > fast) f = Math.min(1.5, Math.max(0, ((z[0] - a[0]) * 1000 - fast) / (slow - fast))); }
+    }
+    r.gpsPace = { t: z[0], E, f };
+    return f;
+  }
+  // Where a runner is from you: { straight (m) } always; on their course as well { alongKm, dir ('coming', 'past' or
+  // 'here'), up and down (m, in the direction of travel between the two of you), walkMin (you to them on foot, at
+  // responder pace), eta (when they reach you at their pace, ms; null when there's nothing to go by), myKm, ageMs }.
+  function fromMe(r) {
+    const M = me(), p = r && r.pos;
+    if (!M || !p || !window.GPT) return null;
+    const E = p.course, km = cur(r), at = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon];
+    const out = { straight: window.GPT.metres([M.lat, M.lon], at), ageMs: Date.now() - M.t, t: M.t };
+    let on = M.on.get(E.id);
+    if (on === undefined) {
+      // Where the app put you on this course, else the nearest point of it.
+      const s = M.course === E.id && M.km != null ? { ic: E.idxAtKm(M.km), offM: M.offM || 0 } : E.snap(M.lat, M.lon);
+      // Every time the course passes you (an out and back passes twice), as course km.
+      on = s.offM <= ME_ON_M ? [E.route[s.ic][2]].concat(E.revisits ? E.revisits(s.ic, 60).map(i => E.route[i][2]) : []).sort((a, b) => a - b) : null;
+      M.on.set(E.id, on);
+    }
+    if (!on || p.done) return out;
+    // The pass they come to next; past them all, the last one.
+    const near = on.find(k => k >= km - 0.02), myKm = near != null ? near : on[on.length - 1], d = km - myKm;
+    const i0 = E.idxAtKm(myKm), i1 = E.idxAtKm(km), lo = Math.min(i0, i1), hi = Math.max(i0, i1);
+    const night = E.isNight && C.nightFactor > 1 && E.isNight(E.now ? E.now() : Date.now()) ? C.nightFactor : 1;
+    Object.assign(out, { myKm, alongKm: Math.abs(d), dir: Math.abs(d) < 0.05 ? 'here' : d < 0 ? 'coming' : 'past', up: E.climb(lo, hi), down: E.climb(hi, lo),
+      walkMin: E.walkMin ? (E.walkMin(myKm, km) + E.climb(i0, i1) * (C.climbPenalty || 0)) * night : null, night: night > 1, eta: null });
+    if (out.dir === 'coming' && !p.stopped && !p.stale && p.onCourse) out.eta = Date.now() + legMs(E, km, myKm, paceOf(r));
+    return out;
+  }
+  const dayF = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short' });
+  // A time of day, with the day when it isn't today.
+  const clockAt = t => (dayF.format(t) === dayF.format(Date.now()) ? '' : dayF.format(t) + ' ') + hm.format(t);
+  // The line a tap on a runner shows. o.walk: add the time on foot from you to them (the staff and field apps);
+  // o.eta: the app's own expected time at you (the runner app, from its splits); o.hint: what to say before the app
+  // knows where you are.
+  function meLine(r, o) {
+    o = o || {};
+    const m = fromMe(r);
+    if (!m) return o.hint && r.pos && !r.pos.done ? `<span class="trk-me trk-me-hint">${o.hint}</span>` : '';
+    const old = m.ageMs > ME_OLD_MIN * 60e3 ? `From where you were at ${clockAt(m.t)}: ` : '';
+    if (m.alongKm == null) return `<span class="trk-me">${old}<b>${dist(m.straight)} from you</b> in a straight line.</span>`;
+    const climb = `+${Math.round(m.up)} m / −${Math.round(m.down)} m`;
+    const eta = m.dir === 'coming' ? (o.eta !== undefined ? o.eta : m.eta) : null;
+    let h = m.dir === 'here' ? '<b>Right where you are</b> on the course.'
+      : m.dir === 'coming' ? `<b>${dist(m.alongKm * 1000)} from you</b>, coming your way (${climb} to reach you).`
+      : `<b>${dist(m.alongKm * 1000)} past you</b> on the course (${climb} from you).`;
+    if (eta && eta > Date.now()) h += ` At their pace they reach you about <b>${clockAt(eta)}</b>.`;
+    if (o.walk && m.walkMin != null && m.dir !== 'here') h += ` About ${r.pos.course.fmt(m.walkMin)} on foot from you${m.night ? ' (night)' : ''}.`;
+    return `<span class="trk-me">${old}${h}</span>`;
+  }
+  // The next stop ahead of a runner on their course (no further than their own finish), and how far: "Next: Halls Gap in 4.2 km".
+  function nextStop(r) {
+    const p = r.pos; if (!p || p.done || !p.onCourse) return null;
+    const E = p.course, km = cur(r), fin = r.chip ? r.chip.finishKm : E.totalKm;
+    const a = (E.AID || []).find(a => a.trail_km > km + 0.05 && a.trail_km <= fin + 0.05);
+    return a ? { name: a.name.replace(/\s*\((start|finish|water point|emergency aid)\)$/i, ''), km: a.trail_km, toGo: a.trail_km - km } : null;
+  }
+  // What a tap on a runner shows, the same on every staff and field map: who they are (with their age category), their
+  // km, how far they are from you, the next stop, and how the position was worked out. opts.find adds a Find button,
+  // opts.extra(r) HTML of its own, opts.meHint the line before the app knows where you are; others: runners on the same spot.
+  function popup(r, opts, others) {
+    opts = opts || {};
+    const p = r.pos, km = cur(r), nx = nextStop(r), ml = meLine(r, { walk: true, hint: opts.meHint });
+    return `${who(r)}<br>km ${one(km)}${p.est ? ' (estimated)' : ''}${p.offM > 60 ? ', ' + dist(p.offM) + ' off the course' : ''}` +
+      (nx ? ` · next <b>${esc(nx.name)}</b> in ${one(nx.toGo)} km` : '') + (ml ? '<br>' + ml : '') + `<br>${where(r)}` +
+      (others && others.length ? `<br><span class="muted">Same spot: ${others.map(x => 'bib ' + esc(x.bib)).join(', ')}</span>` : '') +
+      (opts.extra ? opts.extra(r) : '') + (opts.find ? `<br><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button>` : '');
+  }
   // How the position was worked out, in a few words: "GPS fix 2 min ago", "chip read at Halls Gap 12:40, likely km 52.3 now".
   function where(r) {
     const p = r.pos;
@@ -495,11 +598,44 @@
     return rs.length ? 'Tracked runners nearby: ' + rs.map(r => `bib ${r.bib} (km ${one(cur(r))}${r.pos.est ? ' est.' : ''})`).join(', ') + '.' : '';
   }
 
+  // ---------- the runner sheet (phones) ----------
+  // On a phone the map is small: a popup on it sits under the map's buttons and covers the runner it's about. There,
+  // a tap on a runner opens a sheet at the foot of the map card instead (over the elevation profile), with room for
+  // the lot, and the runner's marker is ringed. sheet(host, map) → { narrow(), open(id, html), refresh(), close(), id() }.
+  // html() is run again on every update while the sheet is open; a tap on the map or × closes it.
+  function sheet(host, map) {
+    let el = null, on = null;
+    const narrow = () => innerWidth < 700;
+    const redraw = () => setTimeout(() => S.listeners.forEach(fn => { try { fn(); } catch (e) { } }), 0);
+    function refresh() {
+      if (!on) return;
+      let h = ''; try { h = on.html() || ''; } catch (e) { }
+      if (!h) { close(); return; }
+      if (h !== on.shown) { on.shown = h; el.querySelector('.trk-sheet-body').innerHTML = h; }
+    }
+    function close() { if (!on) return; on = null; el.hidden = true; host.classList.remove('trk-sheet-on'); redraw(); }
+    function open(id, html) {
+      if (!el) {
+        el = document.createElement('div'); el.className = 'trk-sheet'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Runner');
+        el.innerHTML = '<button type="button" class="trk-sheet-x" aria-label="Close">×</button><div class="trk-sheet-body" aria-live="polite"></div>';
+        el.querySelector('.trk-sheet-x').onclick = close;
+        host.appendChild(el);
+        if (map) map.on('click', close);
+        S.listeners.push(refresh);
+      }
+      on = { id: String(id), html, shown: null };
+      el.hidden = false; el.scrollTop = 0; host.classList.add('trk-sheet-on');
+      refresh();
+      if (on) redraw();  // ring their marker
+    }
+    return { narrow, open, refresh, close, id: () => on ? on.id : null };
+  }
+
   // Map markers for the runners on this course, within a km window (or all). Solid: a fix in the last few minutes.
   // Dashed: estimated from an older fix or chip read. Grey: tracker quiet. Amber: late at the next timing point. Red: not moving.
   // Runners on the same spot (within 40 m: an aid station, or two estimated on the same leg) are stacked in a
   // column below it, so every bib stays in view and can be tapped. opts.find adds a Find button to each popup;
-  // opts.extra(r) adds HTML of its own.
+  // opts.extra(r) adds HTML of its own; opts.sheet (from sheet() above) takes the tap on a phone instead of a popup.
   function draw(layer, E, k0, k1, opts) {
     if (!window.L || !ready()) return;
     opts = opts || {};
@@ -515,13 +651,15 @@
       g.rs.sort((a, b) => (+a.bib || 0) - (+b.bib || 0));
       g.rs.forEach((r, k) => {
         const p = r.pos, km = cur(r);
-        const cls = 'trk-mk' + (p.est ? ' est' : '') + (p.stale ? ' stale' : '') + (p.next && p.next.late ? (p.next.overdue ? ' overdue' : ' late') : '') + (p.stopped ? ' stopped' : '') + (!p.onCourse && p.src === 'gps' && !p.stale ? ' off' : '');
+        const SH = opts.sheet && opts.sheet.narrow() ? opts.sheet : null;
+        const cls = 'trk-mk' + (p.est ? ' est' : '') + (p.stale ? ' stale' : '') + (p.next && p.next.late ? (p.next.overdue ? ' overdue' : ' late') : '') + (p.stopped ? ' stopped' : '') + (!p.onCourse && p.src === 'gps' && !p.stale ? ' off' : '') + (SH && SH.id() === String(r.bib) ? ' sel' : '');
         const icon = L.divIcon({ className: '', html: `<div class="${cls}">${esc(r.bib || '?')}</div>`, iconSize: [30, 18], iconAnchor: [15, 9 - 20 * k], popupAnchor: [0, -20 * k - 6] });
         const at = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon];
         const others = g.rs.filter(x => x !== r);
-        const mk = L.marker(at, { icon, zIndexOffset: 400 + k }).bindPopup(`${who(r)}<br>km ${one(km)}${p.est ? ' (estimated)' : ''}${p.offM > 60 ? ', ' + dist(p.offM) + ' off the course' : ''}<br>${where(r)}` +
-          (others.length ? `<br><span class="muted">Same spot: ${others.map(x => 'bib ' + esc(x.bib)).join(', ')}</span>` : '') +
-          (opts.extra ? opts.extra(r) : '') + (opts.find ? `<br><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button>` : ''));
+        // The popup is built when it's opened, not for every runner on every update. On a phone it's the sheet.
+        const mk = L.marker(at, { icon, zIndexOffset: 400 + k + (cls.endsWith(' sel') ? 600 : 0) });
+        if (SH) mk.on('click', () => SH.open(r.bib, () => r.pos ? popup(r, opts, others) : ''));
+        else mk.bindPopup(() => popup(r, opts, others), { maxWidth: 290 });
         mk.options.bib = r.bib;
         mk.addTo(layer);
       });
@@ -586,5 +724,6 @@
     stopped: r => r.pos.atAid ? `Not moving at ${r.pos.atAid.name} for ${Math.round(r.pos.atAid.stayMs / 60e3)} min, longer than most stay (${r.pos.atAid.limitMin})` : 'Not moving for 20 min, away from any aid station'
   };
 
-  window.GPTTracking = { state: S, ready, byBib, near, between, watch, leaders, list, cur, status, links, where, nearHTML, nearLine, draw, onUpdate, ago, dist, who, seen, hm, health, healthHTML, lines, base: BASE, relay: RELAY, gps: GPS, chip: () => !!CHIP() };
+  window.GPTTracking = { state: S, ready, byBib, near, between, watch, leaders, list, cur, status, links, where, nearHTML, nearLine, draw, onUpdate, ago, dist, who, seen, hm, health, healthHTML, lines,
+    setMe, fromMe, meLine, nextStop, popup, sheet, ageOf, clockAt, base: BASE, relay: RELAY, gps: GPS, chip: () => !!CHIP() };
 })();
