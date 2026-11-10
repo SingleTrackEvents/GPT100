@@ -142,7 +142,8 @@
   const SO = window.GPT && GPT.planPlaces ? GPT.planPlaces(window.GPT100_SO) : window.GPT100_SO;
   let soLayer = null, soKey = null;
   const soT0 = SO ? new Date(SO.t0 + '+11:00').getTime() : 0;
-  const soTime = h => new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(soT0 + h * 3600e3)).replace(',', '');
+  const soFmt = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const soTime = h => soFmt.format(new Date(soT0 + h * 3600e3)).replace(',', '');
   function drawSO() {
     if (!SO || !soLayer) return;
     soLayer.clearLayers();
@@ -742,7 +743,7 @@
       () => ({ title: '3. How to use it', html: `<ul class="rn-tablist">
         <li><b>Home</b> Your race at a glance: the race clock, the next cut-offs, Safety Officers on post, and big buttons to the map, cut-offs and Send my location.</li>
         <li><b>Map</b> A big topo map of your race: its course, aid stations with cut-offs, and Safety Officer posts (SO). Tap <b>◎</b> to find yourself: under the profile you'll see your race km, the next aid station and cut-off, and the way out. Drag the profile or tap the course to see any point.</li>
-        <li><b>Runners</b> On the map: find a bib, the Runner watch (not moving, off the course, late, tracker quiet), the field by section and the front and tail of each race. Show centres the map on a runner.</li>
+        <li><b>Runners</b> On the map: find a bib, the Runner watch (not moving, off the course, late, tracker quiet), the field by section and the front and tail of each race. Show centres the map on a runner. Tap any runner for how far they are from you, the climb between you, when they'll reach you and their age category.</li>
         <li><b>Where</b> Tap <b>Where am I?</b> for your course km, between which aid stations, and how far off the course you are (and which way the course is). No GPS? Type the km.</li>
         <li><b>Send</b> <b>Send my location</b> or <b>Urgent: casualty here</b> opens WhatsApp with the km, position, map link and nearest vehicle access ready. Add a note, pick the Safety Officer and Rescue Team group (or Event HQ), send.</li>
         <li><b>Way out</b> The nearest vehicle access and how long it takes on foot, and the aid stations either side.</li>

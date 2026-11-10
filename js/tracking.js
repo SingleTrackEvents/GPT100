@@ -612,7 +612,7 @@
   // html() is run again on every update while the sheet is open; a tap on the map or × closes it.
   function sheet(host, map) {
     let el = null, on = null;
-    const narrow = () => innerWidth < 700;
+    const narrow = () => innerWidth < 700 || innerHeight <= 500;  // a phone, upright or on its side
     const redraw = () => setTimeout(() => S.listeners.forEach(fn => { try { fn(); } catch (e) { } }), 0);
     function refresh() {
       if (!on) return;
@@ -646,6 +646,9 @@
   function draw(layer, E, k0, k1, opts) {
     if (!window.L || !ready()) return;
     opts = opts || {};
+    // Whether a tap opens the sheet is asked once, before any marker goes on the map: the screen's size is a layout
+    // question, and asking it between adding markers made the browser lay the page out again for every runner.
+    const SH = opts.sheet && opts.sheet.narrow() ? opts.sheet : null, picked = SH ? SH.id() : null;
     // Grouped through a grid of about 50 m squares, so a big field isn't compared runner against runner.
     const groups = [], cells = new Map(), CELL = 0.0005;
     for (const r of list()) {
@@ -661,8 +664,7 @@
       g.rs.sort((a, b) => (+a.bib || 0) - (+b.bib || 0));
       g.rs.forEach((r, k) => {
         const p = r.pos, km = cur(r);
-        const SH = opts.sheet && opts.sheet.narrow() ? opts.sheet : null;
-        const cls = 'trk-mk' + (p.est ? ' est' : '') + (p.stale ? ' stale' : '') + (p.next && p.next.late ? (p.next.overdue ? ' overdue' : ' late') : '') + (p.stopped ? ' stopped' : '') + (!p.onCourse && p.src === 'gps' && !p.stale ? ' off' : '') + (SH && SH.id() === String(r.bib) ? ' sel' : '');
+        const cls = 'trk-mk' + (p.est ? ' est' : '') + (p.stale ? ' stale' : '') + (p.next && p.next.late ? (p.next.overdue ? ' overdue' : ' late') : '') + (p.stopped ? ' stopped' : '') + (!p.onCourse && p.src === 'gps' && !p.stale ? ' off' : '') + (picked != null && picked === String(r.bib) ? ' sel' : '');
         const icon = L.divIcon({ className: '', html: `<div class="${cls}">${esc(r.bib || '?')}</div>`, iconSize: [30, 18], iconAnchor: [15, 9 - 20 * k], popupAnchor: [0, -20 * k - 6] });
         const at = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon];
         const others = g.rs.filter(x => x !== r);

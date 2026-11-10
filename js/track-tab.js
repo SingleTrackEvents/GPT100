@@ -354,7 +354,9 @@
   }
   const everyMarks = new Map(), folMarks = new Map();
   const bibIcon = (bib, c, faint, sel) => L.divIcon({ className: '', html: `<div class="trk-mk tk-ev${faint ? ' est' : ''}${sel ? ' sel' : ''}" style="--c:${c}">${esc(bib)}</div>`, iconSize: [30, 18], iconAnchor: [15, 9] });
-  const picked = id => sheetOn() && SH.id() === String(id);
+  // The runner whose sheet is open (asked once per redraw: the screen's size is a layout question).
+  let pickedId = null;
+  const picked = id => pickedId != null && pickedId === String(id);
   function drawEveryone(m) {
     if (!everyLayer) {
       // Their own pane: above the course and its aid stations, under the followed runners' bib markers.
@@ -408,6 +410,7 @@
   function drawMap() {
     const m = window.GPTRunner && GPTRunner.map();
     if (!m || !window.L) return;
+    pickedId = sheetOn() ? SH.id() : null;
     drawEveryone(m);
     if (!layer) layer = L.layerGroup().addTo(m);
     const items = [];

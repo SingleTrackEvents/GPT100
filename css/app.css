@@ -36,6 +36,7 @@
   --hl: #fff3c4;
   --tint-blue: #eef4fc;
   --link: #2c6644;
+  --tel: #b0181d;   /* phone numbers and links on the runner app's Help tab: emergency red */
   --accent-text: var(--course);
   --w3w: #e11f26;
   --blue: #1666c9;
@@ -653,6 +654,10 @@ details.trk-aid summary { cursor: pointer; font-size: 12px; color: var(--muted);
 .trk-sheet-body > b:first-child { font-size: 16px; }
 .trk-sheet .trk-me { font-size: 15px; margin: 8px 0; }
 .trk-sheet .btn.small { min-height: 44px; margin-top: 8px; }
+/* A phone on its side: the map sits beside the profile, and the sheet takes the profile's side. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .fd-maptab .trk-sheet { left: auto; top: 0; width: 46%; max-height: none; border-top: 0; border-left: 3px solid var(--walk); box-shadow: -8px 0 20px rgba(0,0,0,.25); }
+}
 .trk-mk.sel { box-shadow: 0 0 0 3px var(--walk), 0 0 0 6px rgba(255,255,255,.9), 0 2px 6px rgba(0,0,0,.6); }
 .trk-mk { min-width: 30px; height: 18px; padding: 0 4px; border-radius: 9px; background: #1666c9; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); font: 700 10px/14px var(--body); text-align: center; white-space: nowrap; }
 .trk-mk.stale { background: #9a9a9a; }
@@ -778,6 +783,7 @@ html.demo-on body.field .demo-list { bottom: calc(112px + env(safe-area-inset-bo
     --hl: #3a3215;
     --tint-blue: #172638;
     --link: #f5bd62;
+    --tel: #ff8a80;
     --accent-text: #f2804f;
     --w3w: #ff6b6b;
     --blue: #7ab0ff;

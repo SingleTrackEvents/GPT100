@@ -23,7 +23,7 @@
     root.classList.add('prof');
     root.innerHTML = `<div class="prof-head"><span class="prof-title"></span>
         <span class="prof-seg" role="group" aria-label="Profile"><button type="button" data-p="section" disabled>This section</button><button type="button" data-p="course" class="on">Whole course</button></span></div>
-      <div class="prof-svg" aria-label="Elevation profile"></div>
+      <div class="prof-svg" role="img" aria-label="Elevation profile"></div>
       <p class="prof-legend" aria-label="Steepness">${GRADES.map(g => `<span><i style="background:${g[1]}"></i>${g[2]}</span>`).join('')}</p>
       <p class="prof-info"></p>`;
     const q = s => root.querySelector(s), box = q('.prof-svg'), info = q('.prof-info');
