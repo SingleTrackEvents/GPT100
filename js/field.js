@@ -551,7 +551,7 @@
       if (navigator.geolocation && watchId == null) { $('fdFollow').checked = true; follow(true); } else shareDraw();
     };
   }
-  if (LV) LV.onChange(() => { rcDraw(); shareDraw(); });
+  if (LV) { LV.onChange(() => { rcDraw(); shareDraw(); LV.push.row($('fdAlerts')); }); LV.push.row($('fdAlerts')); }
 
   // The last location (with its time), the note and Keep updating are kept on this phone through a reload.
   function keep() {

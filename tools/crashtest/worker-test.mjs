@@ -130,6 +130,24 @@ ok('the phone then fetches the notice', r.j.items.length === 1 && /Storm cell/.t
 ok('and only once', (await call('/push/news?ep=' + sub)).j.items.length === 0);
 ok('a phone that has gone is dropped', (await rc('/rc/state?since=0')).j.live.alerts === 1);
 ok('news for an unknown phone', (await call('/push/news?ep=' + 'f'.repeat(32))).j.gone === true);
+// The race moves on (the stand-in timing list, feeds.js /__step): only the runners a phone follows are news to it.
+const FEEDS = process.env.FEEDS || 'http://127.0.0.1:8766', stepTo = async n => { await fetch(FEEDS + '/__step?n=' + n); await fetch(W + '/__cron'); await new Promise(r => setTimeout(r, 300)); };
+const news = async () => (await call('/push/news?ep=' + sub)).j.items || [];
+await call('/push/sub', { endpoint: ep, app: 'runner', bibs: ['1000', '1002'], notices: true });
+await stepTo(2);
+let got = await news();
+ok('a followed runner reaching a checkpoint is an alert', got.length === 1 && got[0].bib === '1000' && /Test0 Runner \(bib 1000\)/.test(got[0].title) && /Halls Gap/.test(got[0].text) && /14:32/.test(got[0].text), got);
+await stepTo(2);
+ok('the same read is not sent twice', (await news()).length === 0);
+await stepTo(3);
+got = await news();
+ok('a followed runner withdrawing is an alert', got.length === 1 && got[0].bib === '1002' && /DNF|withdrawn/i.test(got[0].text), got);
+await stepTo(4);
+got = await news();
+ok('and so is their finish', got.length === 1 && got[0].bib === '1000' && /Finish/i.test(got[0].text) && /16:05/.test(got[0].text), got);
+const woke = (await (await fetch(W + '/__pushlog')).json()).filter(x => ep.endsWith(x.to)).length;
+ok('each one woke the phone', woke >= 4, woke);
+await fetch(FEEDS + '/__step?n=0');
 await call('/push/unsub', { endpoint: ep });
 ok('a phone can turn alerts off', (await call('/push/news?ep=' + sub)).j.gone === true);
 

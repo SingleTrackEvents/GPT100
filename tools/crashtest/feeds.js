@@ -2,6 +2,8 @@
 // (run.js starts it). Open any app with ?gps=http://127.0.0.1:8766/<case>/ to see one: ok, garbage, empty, html,
 // err500, err404, weird, shapes, nolabels, errorobj, mid (400 runners), huge (1500 runners), slow.
 // http://127.0.0.1:8766/<case>/init.txt | data.lst | data.php | timing.json
+// The case `live` is the good feed with a race that moves on when told to: GET /__step?n=2 gives the first two
+// runners a read at Halls Gap, n=3 also withdraws bib 1002, n=4 also finishes bib 1000 (for the alerts test).
 const http = require('http'), fs = require('fs'), vm = require('vm'), path = require('path');
 const ctx = { window: {} }; vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../data/course.js'), 'utf8'), ctx);
 const R = ctx.window.GPT100_DATA.route;  // [lat, lon, km, ele]
@@ -59,9 +61,15 @@ const CASES = {
   slow: () => ({ slow: 25000, init: 'RACENAME:slow\nLIVE:1\n', data: '', timing: '[]' })
 };
 const cache = {};
+let step = 0;
+const liveTiming = () => JSON.stringify(Array.from({ length: 40 }, (_, i) => Object.assign({ Place: '', Status: step >= 3 && i === 2 ? 'DNF' : '', Bib: 1000 + i, Name: `Runner, Test${i}`, Contest: 'GPT100 Solo/Pairs', Gender: i % 2 ? 'M' : 'F', AgeGroup: 'M40-49', Start: '06:00:00', CopperMineTrack: '07:10:00' },
+  i < Math.min(step, 2) ? { HallsGapIn: '14:32:00' } : {}, step >= 4 && i === 0 ? { Finish: '16:05:00' } : {})));
 http.createServer((req, res) => {
+  const sm = /^\/__step\?n=(\d+)/.exec(req.url || '');
+  if (sm) { step = +sm[1]; res.writeHead(200, { 'Access-Control-Allow-Origin': '*' }); res.end('step ' + step); return; }
   const m = /^\/([a-z0-9]+)\/([a-z.]+)/.exec(req.url || ''), H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-GPS-Server-Filesize, X-GPS-Server-Reset', 'Cache-Control': 'no-store' };
-  if (!m || !CASES[m[1]]) { res.writeHead(404, H); res.end('no such case'); return; }
+  if (m && m[1] === 'live') cache.live = Object.assign(cache.live || CASES.ok(), { timing: liveTiming() });
+  if (!m || !(CASES[m[1]] || m[1] === 'live')) { res.writeHead(404, H); res.end('no such case'); return; }
   const c = cache[m[1]] = cache[m[1]] || CASES[m[1]](), f = m[2];
   const send = () => {
     if (c.status) { res.writeHead(c.status, H); res.end('error ' + c.status); return; }

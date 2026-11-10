@@ -107,8 +107,17 @@
     bib = String(bib);
     follow = isOn(bib) ? follow.filter(b => b !== bib) : follow.concat(bib);
     store.set('follow', follow);
-    draw();
+    draw(); alerts(true);
   }
+  // Alerts (js/live.js): a notification when a followed runner reaches a checkpoint. The Worker is told who's
+  // followed whenever the list changes.
+  const LV = window.GPTLive;
+  function alerts(changed) {
+    if (!LV) return;
+    if (changed) LV.push.setBibs(follow.slice(0, 30));
+    LV.push.row($('tkAlerts'), () => follow);
+  }
+  if (LV) LV.onChange(() => alerts());
   let open = store.get('trackOpen', {});
 
   // ---------- the cards ----------
@@ -441,14 +450,14 @@
   function fromHash() {
     const m = /bib=(\d+)/.exec(location.hash);
     if (!m) return false;
-    if (!isOn(m[1])) { follow = follow.concat(m[1]); store.set('follow', follow); }
+    if (!isOn(m[1])) { follow = follow.concat(m[1]); store.set('follow', follow); alerts(true); }
     try { history.replaceState(history.state, '', location.pathname + location.search); } catch (e) { }
     if (window.GPTRunner) GPTRunner.setTab('track');
     return true;
   }
   addEventListener('hashchange', () => { if (fromHash()) draw(); });
   fromHash();
-  draw();
+  draw(); alerts();
   const tr = TR();
   if (tr) tr.onUpdate(() => { drawMap(); if (onTab()) { drawStatus(); drawCards(); drawOrder(); if ($('tkFind').value) drawHits(); } });
   document.querySelector('.rn-nav button[data-tab="track"]').addEventListener('click', draw);

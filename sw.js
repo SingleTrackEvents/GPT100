@@ -267,10 +267,14 @@ self.addEventListener('push', e => {
   e.waitUntil((async () => {
     let items = [];
     try {
-      const base = await (await caches.open(LIVE)).match('/__live-base').then(r => r ? r.text() : '');
-      const sub = await self.registration.pushManager.getSubscription();
-      if (base && sub) {
-        const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint)))].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+      const live = await caches.open(LIVE), base = await live.match('/__live-base').then(r => r ? r.text() : '');
+      // Which phone this is to the Worker: a hash of its push address (the app leaves it here when alerts go on).
+      let hash = await live.match('/__live-ep').then(r => r ? r.text() : '');
+      if (base && !hash) {
+        const sub = await self.registration.pushManager.getSubscription();
+        if (sub) hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint)))].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+      }
+      if (base && /^[0-9a-f]{32}$/.test(hash)) {
         const res = await within(timed(base + '/push/news?ep=' + hash, { cache: 'no-store' }), 9000);
         items = (await res.json()).items || [];
       }

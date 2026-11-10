@@ -176,11 +176,16 @@
       if (!S.push || !S.push.key) await refresh();
       if (!S.push || !S.push.key) throw new Error('Alerts aren\'t set up yet. Try again with signal.');
       if (await Notification.requestPermission() !== 'granted') throw new Error('Notifications are blocked for this site. Allow them in the phone\'s settings.');
-      const reg = await navigator.serviceWorker.ready;
+      const reg = await Promise.race([navigator.serviceWorker.ready, new Promise((_, no) => setTimeout(() => no(new Error('The app is still setting up. Close it, open it again and try once more.')), 10000))]);
       let sub = await reg.pushManager.getSubscription();
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(S.push.key) });
-      // The service worker asks the Worker what's new when a push wakes it: it reads the address from here.
-      try { await (await caches.open('gpt100-live')).put('/__live-base', new Response(base())); } catch (e) { }
+      // The service worker asks the Worker what's new when a push wakes it: it reads the address, and which phone
+      // this is to the Worker (a hash of the push address), from here.
+      try {
+        const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(sub.endpoint)))].map(x => x.toString(16).padStart(2, '0')).join('').slice(0, 32);
+        const c = await caches.open('gpt100-live');
+        await c.put('/__live-base', new Response(base())); await c.put('/__live-ep', new Response(hash));
+      } catch (e) { }
       const x = await call('/push/sub', { endpoint: sub.endpoint, app: APP === 'field' ? 'field' : 'runner', bibs: bibs || [], notices: true });
       if (!x.ok) throw new Error(x.j.error || 'Couldn\'t turn alerts on. Try again.');
       save(PK, { on: true, bibs: x.j.bibs || [] }); tell();
@@ -192,7 +197,30 @@
     },
     async disable() {
       try { const reg = await navigator.serviceWorker.getRegistration(), sub = reg && await reg.pushManager.getSubscription(); if (sub) { await call('/push/unsub', { endpoint: sub.endpoint }).catch(() => { }); await sub.unsubscribe(); } } catch (e) { }
+      try { await (await caches.open('gpt100-live')).delete('/__live-ep'); } catch (e) { }
       save(PK, null); tell();
+    },
+    // The Alerts line both apps show, drawn into el. bibs() gives the followed bibs (the runner app); without it
+    // the alerts are for Race Control's notices only (the field app). Nothing shows until the Worker offers alerts.
+    async row(el, bibs) {
+      if (!el) return;
+      const st = await push.state(), runner = !!bibs, n = runner ? bibs().length : 0;
+      const what = runner ? 'when a runner you follow reaches a checkpoint, finishes or withdraws, and for notices from Race Control' : 'for notices from Race Control';
+      let h = '';
+      if (st === 'unsupported' || (st !== 'on' && !(S.push && S.push.key))) h = '';
+      else if (st === 'install') h = `<p class="lv-line"><b>Alerts on iPhone</b> need the app on your home screen: tap Share, then Add to Home Screen, and open GPT100 from there. Then you can turn on alerts ${what}.</p>`;
+      else if (st === 'blocked') h = '<p class="lv-line warn"><b>Alerts are blocked.</b> Allow notifications for this site in the phone\'s settings, then come back here.</p>';
+      else if (st === 'on') h = `<p class="lv-line ok"><b>Alerts are on</b> ${runner ? (n ? `for the ${n} runner${n > 1 ? 's' : ''} you follow, and` : '(follow a runner to hear about them), and') + ' for notices from Race Control' : 'for notices from Race Control'}. <button type="button" class="fd-linkbtn" data-push="off">Turn off</button></p>`;
+      else h = `<div class="lv-row lv-alerts"><button type="button" class="btn" data-push="on">Turn on alerts</button><span class="fd-hint">A notification ${what}.</span></div><p class="fd-hint bad" data-push-err role="alert"></p>`;
+      if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
+      el.hidden = !h;
+      el.onclick = async e => {
+        const b = e.target.closest('button[data-push]'); if (!b || b.disabled) return;
+        b.disabled = true;
+        try { if (b.dataset.push === 'on') await push.enable(runner ? bibs() : []); else await push.disable(); }
+        catch (err) { const o = el.querySelector('[data-push-err]'); if (o) o.textContent = (err && err.message) || 'Couldn\'t turn alerts on. Try again.'; b.disabled = false; return; }
+        el.dataset.h = ''; push.row(el, bibs);
+      };
     }
   };
 
