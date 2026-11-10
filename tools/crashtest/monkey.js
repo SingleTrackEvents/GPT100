@@ -30,7 +30,7 @@ const only = (process.argv[2] || 'index,map,field,runner').split(','), N = +(pro
       const roll = R();
       let act = '';
       try {
-        if (!page.url().startsWith(BASE + '' + app + '.html')) { act = 'left the page (' + page.url().slice(0, 80) + '), going back'; await page.goto(url, { waitUntil: 'load' }); await sleep(1500); }
+        if (!page.url().startsWith(BASE + app + '.html')) { act = 'left the page (' + page.url().slice(0, 80) + '), going back'; await page.goto(url, { waitUntil: 'load' }); await sleep(1500); }
         else if (roll < 0.62) {
           // tap something that can be tapped
           act = await page.evaluate(r => {
