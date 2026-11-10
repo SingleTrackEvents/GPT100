@@ -14,13 +14,13 @@ npx playwright install chromium
 Then, from the repo:
 
 ```
-node tools/crashtest/run.js quick    # about 10 minutes: bad input in each app, broken feeds, no signal
-node tools/crashtest/run.js          # everything, about 40 minutes
+node tools/crashtest/run.js quick    # about 25 minutes: bad input in each app, broken feeds, no signal
+node tools/crashtest/run.js          # everything, about an hour and a half
 ```
 
 `run.js` serves the apps from this checkout on `http://127.0.0.1:8765/` and a stand-in tracking and timing provider on `:8766`, runs each test in turn, and ends with the list of problems (the exit code is 1 if there are any). Nothing is sent to the real tracking or timing providers, the Worker or WhatsApp: requests to the Worker are blocked, links are stopped from leaving the page, and the demo field or the stand-in feeds supply the runners.
 
-Each test can also be run by itself once the two servers are up (`python3 -m http.server 8765` in the repo, and `node tools/crashtest/feeds.js`):
+One test at a time: `node tools/crashtest/run.js only inputs.js runner` (or run a script directly once the two servers are up: `python3 -m http.server 8765` in the repo, and `node tools/crashtest/feeds.js`). The tests:
 
 | Script | What it does |
 | --- | --- |

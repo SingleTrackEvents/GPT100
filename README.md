@@ -179,7 +179,7 @@ It's a plain static site with no build step. Offline mode needs the site served 
 
 Everything a page needs to start comes from the app's own address: the map library (Leaflet) and the two fonts are kept in `lib/` and saved for offline with each build, so the apps don't wait on, or fail with, another site on race day. Only the map tiles beyond the saved topo map, the weather data and live what3words lookups come from elsewhere.
 
-**Checking a change before race week.** `node tools/crashtest/run.js quick` drives all four apps in a real browser with bad input, broken tracking and timing feeds and no signal, and lists anything that breaks (about 10 minutes; the full set, with random tapping, takes about 40). See [`tools/crashtest/README.md`](tools/crashtest/README.md).
+**Checking a change before race week.** `node tools/crashtest/run.js quick` drives all four apps in a real browser with bad input, broken tracking and timing feeds and no signal, and lists anything that breaks (about 25 minutes; the full set, with random tapping, takes about an hour and a half). See [`tools/crashtest/README.md`](tools/crashtest/README.md).
 
 **Releasing a change.** Each release has a build number. The pages ask for every script and stylesheet with it (`js/app.js?v=69`), and `sw.js` saves each build in its own cache. So a phone never runs a page with files from two releases, even on a patchy link where only some of the new files get through: it shows the new page once all its files are in, and until then the saved page with its own files. Before you merge a change to code, styles or pages, run:
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Run every crash test against this checkout: node tools/crashtest/run.js   (about 40 minutes; README.md beside this file)
+// Run every crash test against this checkout: node tools/crashtest/run.js   (about an hour and a half; README.md beside this file)
 // It serves the apps itself on http://127.0.0.1:8765/ and the stand-in feeds on :8766, runs each test in turn, and
 // ends with the list of problems found (and a non-zero exit code if there are any).
-//   node tools/crashtest/run.js quick     the short set (about 10 minutes): inputs for each app, the feeds, no signal
+//   node tools/crashtest/run.js quick     the short set (about 25 minutes): inputs for each app, the feeds, no signal
+//   node tools/crashtest/run.js only inputs.js runner     one test (here the runner app's inputs)
 const http = require('http'), fs = require('fs'), path = require('path'), { spawn } = require('child_process');
 const ROOT = path.join(__dirname, '../..'), HERE = __dirname;
 const TYPES = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', json: 'application/json', webmanifest: 'application/manifest+json', png: 'image/png', jpg: 'image/jpeg', svg: 'image/svg+xml', woff2: 'font/woff2', md: 'text/plain; charset=utf-8', txt: 'text/plain' };
@@ -13,7 +14,7 @@ const server = http.createServer((req, res) => {
   fs.readFile(f, (err, buf) => { if (err) { res.writeHead(404); res.end('not found'); return; } res.writeHead(200, { 'Content-Type': TYPES[path.extname(f).slice(1)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); res.end(buf); });
 });
 const quick = process.argv[2] === 'quick';
-const TESTS = [
+const TESTS = process.argv[2] === 'only' ? [process.argv.slice(3)] : [
   ['inputs.js', 'staff'], ['inputs.js', 'map'], ['inputs.js', 'field'], ['inputs.js', 'runner'], ['feeds-gps-clock.js', 'feeds'], ['offline.js'],
   ...(quick ? [] : [['inputs.js', 'storage'], ['feeds-gps-clock.js', 'gps'], ['feeds-gps-clock.js', 'clock'], ['monkey.js']])
 ];
