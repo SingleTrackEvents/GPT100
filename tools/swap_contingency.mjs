@@ -9,8 +9,9 @@
 // Access points that only reached the old stretch get "courses": [<id>]. Points that join the new stretch (from
 // tools/contingency_joins.py) move to it; access points for the new stretch only ("courses": ["contingency"]) join
 // the course and become a water point (the course sheet's new point). Then run python3 tools/add_course_w3w.py
-// --course gpt100 for the new stretch's words. (Don't run tools/contingency_joins.py after this: the old stretch keeps
-// the GPT100's own walks.)
+// --course gpt100 for the new stretch's words, and node tools/check_heights.mjs for its heights (the Miler
+// contingency's were stepped: tools/resample_heights.py). (Don't run tools/contingency_joins.py after this: the old
+// stretch keeps the GPT100's own walks.)
 import fs from 'fs';
 
 const [id, name, label, mainLabel] = process.argv.slice(2);
