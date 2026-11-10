@@ -322,7 +322,7 @@
     $('rnHero').innerHTML = `<p class="rn-hero-race">${esc(race.label)}${race.stages.length > 1 ? ' · ' + esc(S.label) : ''}</p>
       <p class="rn-hero-count">${count}</p>
       <div class="rn-hero-facts"><span><b>${one(fin.km)}</b> km</span><span><b>+${nf.format(fin.up)}</b> m</span><span><b>${P.length - 2}</b> aid points</span></div>
-      <p>Start <b>${when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}`;
+      <p>Start <b>${when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}${window.GPTRaces.ridge ? window.GPTRaces.ridge(S) : ''}`;
     // Up next on the schedule for this race (and crews).
     const nxt = events().filter(e => wanted(e, race.id) && e.start > now - 20 * 60e3).slice(0, 2);
     $('rnHomeNext').innerHTML = `<h2>Up next</h2>` + (nxt.length ? nxt.map(e => `<div class="rn-now-i rn-home-i"><b>${when(new Date(e.start))}</b><span>${esc(e.what)}</span><em>${e.start <= now ? 'now' : until(e.start - now)}</em></div>`).join('') : '<p class="muted">Nothing more on the schedule.</p>') +

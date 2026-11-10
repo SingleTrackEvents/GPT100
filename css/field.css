@@ -163,7 +163,7 @@ html.demo-on body.field .fd-maptab:not([hidden]) { height: calc(var(--vvh, 100sv
 .fd-rbtn { display: flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 11px 0 9px; border: 0; border-radius: 4px; background: var(--paper); color: var(--ink); font: 700 14px var(--body); cursor: pointer; }
 .fd-rbtn:hover { background: var(--hover); }
 .fd-rbtn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.fd-rbtn.on { background: var(--ink); color: var(--paper); }
+.fd-rbtn.on { background: var(--sel); color: var(--on-sel); }
 body.field .fd-rp { position: fixed; inset: 0; z-index: 2600; width: auto; max-width: none; border: 0; padding: 0 14px calc(24px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
 body.field .fd-rp .mp-panel-head { position: sticky; top: 0; z-index: 1; margin: 0 -14px; padding: max(8px, env(safe-area-inset-top)) 14px 6px; background: var(--paper); border-bottom: 1px solid var(--line); }
 body.field .fd-rp .mp-x { width: 44px; height: 44px; font-size: 26px; color: var(--ink); }

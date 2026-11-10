@@ -433,7 +433,7 @@
     $('fdHero').innerHTML = `<p class="rn-hero-race">${esc(race.label)}${race.stages.length > 1 ? ' · ' + esc(stage.label) : ''}</p>
       <p class="rn-hero-count">${count}</p>
       <div class="rn-hero-facts"><span><b>${one(fin.km)}</b> km</span><span><b>+${fin.up.toLocaleString('en-AU')}</b> m</span><span><b>${P.length - 2}</b> aid points</span></div>
-      <p>Start <b>${RX.when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${RX.when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}`;
+      <p>Start <b>${RX.when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${RX.when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}${RX.ridge ? RX.ridge(S) : ''}`;
     // The next cut-offs on this race (for sweeps), with how long until each.
     const nxt = P.filter((x, i) => i && x.ct && !x.noCut && x.ct.getTime() > now).slice(0, 3);
     $('fdHomeNext').innerHTML = `<h2>Next cut-offs</h2>` + (nxt.length ? nxt.map(x => `<div class="rn-now-i rn-home-i"><b>${RX.when(x.ct)}</b><span>${esc(x.name)} · km ${one(x.km)}</span><em>${until(x.ct.getTime() - now)}</em></div>`).join('') : '<p class="muted">All the cut-offs for this race have passed.</p>') +

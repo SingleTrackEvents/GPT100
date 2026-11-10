@@ -8,7 +8,9 @@ It works on a phone, tablet or laptop, and keeps working when there's no signal.
 
 **Courses:** a picker at the top of Find switches between the GPT100 course (which the 50k, 33k and stage races also run on) and the 14k (the 6k runs on part of it). Each course has its own km, sections and checkpoints, and shares the same access points and drive routes.
 
-**Dark mode:** every app follows the phone or computer's light or dark setting, with dark screens for night on the course. The topo map keeps its colours, and the red Urgent and Call 000 buttons stay red.
+**The GPT100 look:** the apps wear the colours of [gpt100.com.au](https://www.gpt100.com.au/): its deep forest green for the headers, the bottom tabs and the Home card, its amber gold for the race clock, the picked tab and the line under the header, forest for the main buttons, and Bebas Neue for the headings. The Home card in the runner and field apps carries the picked race's own skyline, its elevation profile from start to finish drawn in gold. Red stays for Urgent and Call 000, and green, amber and red keep their meaning in the ratings and weather triggers. The colours are set once at the top of `css/app.css` (`--forest`, `--forest-2`, `--gold`).
+
+**Dark mode:** every app follows the phone or computer's light or dark setting, with dark screens for night on the course. The picked one of a set of buttons is forest by day and gold at night. The topo map keeps its colours, and the red Urgent and Call 000 buttons stay red.
 
 **Map keys:** every map's key folds away behind its **Key** button, so it doesn't cover the map on a phone. Folding one folds them all, and the device remembers it. Keys start folded on a phone and open on a big screen.
 

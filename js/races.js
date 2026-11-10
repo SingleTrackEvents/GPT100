@@ -164,8 +164,23 @@
     return L;
   };
 
+  // The race's own skyline, for the foot of the Home card: its elevation profile from start to finish as a ridge line
+  // (the peaks the race is named for), drawn from the course line. '' for a race without a map.
+  const ridge = stage => {
+    if (stage.ridge != null) return stage.ridge;
+    const E = engineFor(stage), P = stage.points;
+    stage.ridge = '';
+    if (!E || !E.route || P[0].gk == null) return '';
+    const i0 = E.idxAtKm(P[0].gk), i1 = E.idxAtKm(P[P.length - 1].gk), n = 160, W = 640, H = 58, hs = [];
+    if (i1 - i0 < 8) return '';
+    for (let k = 0; k <= n; k++) hs.push(E.route[Math.round(i0 + (i1 - i0) * k / n)][3]);
+    const lo = Math.min(...hs), hi = Math.max(...hs), y = e => (H - 6 - (H - 12) * (e - lo) / ((hi - lo) || 1)).toFixed(1);
+    const line = hs.map((e, k) => (k ? 'L' : 'M') + (W * k / n).toFixed(1) + ',' + y(e)).join('');
+    return stage.ridge = `<svg class="rn-hero-ridge" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="fill" d="${line}L${W},${H}L0,${H}Z"/><path class="line" d="${line}"/></svg>`;
+  };
+
   const stagesOf = r => r.stages.map(id => prepare(R.stages[id], r.course));
   // A stage race opens on today's stage (or the next one).
   const currentStage = (r, now) => { const list = stagesOf(r); return list.find(s => s.points[s.points.length - 1].ct.getTime() > (now || Date.now())) || list[0]; };
-  window.GPTRaces = { R, mel, fmt, hm, when, dur, words, engineFor, prepare, stagesOf, currentStage, toRace, toCourse, timeAt, interpKm, paceAt, livePace, liveEta };
+  window.GPTRaces = { R, mel, fmt, hm, when, dur, words, engineFor, prepare, stagesOf, currentStage, toRace, toCourse, timeAt, interpKm, paceAt, livePace, liveEta, ridge };
 })();
