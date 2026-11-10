@@ -258,17 +258,19 @@
     const G = window.GPT, A = G.AID, rows = [];
     for (let i = 1; i < A.length; i++) {
       const rs = TR.between(G, A[i - 1].trail_km, A[i].trail_km);
-      if (rs.length) rows.push({ a: A[i - 1], b: A[i], n: rs.length, stopped: rs.filter(r => r.pos.stopped).length });
+      if (rs.length) rows.push({ a: A[i - 1], b: A[i], n: rs.length, stopped: rs.filter(r => r.pos.stopped && !(r.pos.atAid && !r.pos.atAid.over)).length });
     }
     const lead = TR.leaders(G), w = TR.watch();
-    el.innerHTML = `<div class="card"><h3>Runners on course now</h3><p class="trk-status">${esc(TR.status())}</p>${TR.links()}` +
+    const L = TR.lines;
+    el.innerHTML = `<div class="card"><h3>Runners on course now</h3><p class="trk-status">${esc(TR.status())}</p>${TR.links()}${TR.healthHTML()}` +
       (lead.length ? `<div class="row"><span><b>Leader</b><span class="sub">${TR.who(lead[0])}, km ${one(TR.cur(lead[0]))}${lead[0].pos.est ? ' (estimated)' : ''}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(lead[0].bib)}">Find</button></div>
         <div class="row"><span><b>Tail</b><span class="sub">${TR.who(lead[lead.length - 1])}, km ${one(TR.cur(lead[lead.length - 1]))}${lead[lead.length - 1].pos.est ? ' (estimated)' : ''}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(lead[lead.length - 1].bib)}">Find</button></div>` : '') +
       rows.map(x => `<div class="row"><span><b>${esc(short(x.a.name))} to ${esc(short(x.b.name))}</b><span class="sub">km ${one(x.a.trail_km)} to ${one(x.b.trail_km)}${x.stopped ? `, <b>${x.stopped} not moving</b>` : ''}</span></span><span class="v">${x.n}</span></div>`).join('') +
-      (w.stopped.length ? `<h4>Not moving for 20 minutes</h4>` + w.stopped.slice(0, 8).map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">km ${one(r.pos.km)}, last fix ${TR.ago(r.pos.ageMs)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') : '') +
-      (w.off.length ? `<h4>Off the course</h4>` + w.off.slice(0, 8).map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">${TR.dist(r.pos.offM)} from km ${one(r.pos.km)}, ${TR.where(r)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') : '') +
+      (w.stopped.length ? `<h4>Not moving</h4>` + w.stopped.slice(0, 8).map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">${L.stopped(r)}, km ${one(r.pos.km)}, last fix ${TR.ago(r.pos.ageMs)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') : '') +
+      (w.off.length ? `<h4>Off the course</h4>` + w.off.slice(0, 8).map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">${L.off(r)}, from km ${one(r.pos.km)}, ${TR.where(r)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') : '') +
       (w.late.length ? `<h4>Late at the next checkpoint</h4>` + w.late.slice(0, 8).map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">${TR.where(r)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') : '') +
-      (w.quiet.length ? `<h4>Trackers gone quiet</h4>` + w.quiet.slice(0, 8).map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">last at km ${one(r.pos.km)}, ${TR.ago(r.pos.ageMs)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') : '') +
+      (w.quiet.length ? `<h4>Trackers gone quiet</h4>` + w.quiet.slice(0, 8).map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">${L.quiet(r)}, last at km ${one(r.pos.km)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') : '') +
+      (w.aid.length ? `<details class="trk-aid"><summary>At aid stations (${w.aid.length}), within the usual stay</summary>` + w.aid.map(r => `<div class="row"><span>${TR.who(r)}<span class="sub">${esc(L.aid(r))}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`).join('') + '</details>' : '') +
       '</div>';
   }
   const short = n => n.replace(/\s*\((start|finish|aid station|water point|emergency aid)\)/ig, '');

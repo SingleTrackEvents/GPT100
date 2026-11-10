@@ -35,9 +35,20 @@
 
   const EPOCH = Date.UTC(2006, 0, 1) / 1000;  // the GPS feed counts seconds from 1 January 2006 UTC
   const ALPHA = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-  const STALE_MIN = 15, STOPPED_MIN = 20, STOPPED_M = 60, KEEP = 40;  // last fixes kept per runner
+  const STALE_MIN = 15, STOPPED_MIN = 20, STOPPED_M = 60, KEEP = 240;  // last fixes kept per runner (about 3 hours)
   const EST_MIN = 3;        // a hard fix older than this gets a projected km
   const LATE_MIN = 20;      // late at the next timing point: this long (or a quarter of the leg) past their expected time
+  // At an aid station: within AID_M of one. Not moving or a quiet tracker there is a runner at the aid station (a tent or a
+  // roof blocks the signal), shown on its own, until they've been there longer than 9 in 10 runners stayed in 2026
+  // (tracking.aidStayMin, minutes, by aid station name; AID_STAY_DEFAULT otherwise). In the 2026 Miler, 97% of "not
+  // moving" flags and 84% of "tracker gone quiet" flags were runners at aid stations.
+  const AID_M = 300, AID_STAY_DEFAULT = 30;
+  const AID_STAY = Object.assign({ 'GAR Trailhead': 15, 'Halls Gap': 40, 'Mt Rosea Carpark': 20, 'Borough Huts Camp': 35, 'Mt William Carpark': 50,
+    'Jimmy Creek Camp': 45, 'Griffin Fireline': 45, 'Cassidys Gap Rd': 20, 'Bainggug Carpark': 35 }, T.aidStayMin || {});
+  const QUIET_ESC_MIN = 30;  // a tracker quiet this long away from an aid station heads the Runner watch
+  // Off the course: at least OFF_FIXES fixes in a row more than 150 m from it, over at least OFF_MIN minutes. In 2026 half
+  // the single-fix flags were GPS wobble; every one that lasted was away from the aid stations.
+  const OFF_FIXES = 2, OFF_MIN = 3;
 
   // tracking.gpsJoinedOnly: GPS events that carry more than runners (every tracker: vehicles, sweeps, other races).
   // A tracker in one of them is shown only when it's joined to a chip runner in the event's races (gpsRaces).
@@ -95,6 +106,8 @@
   function handleData(F, txt) {
     const lines = txt.split('\n');
     for (const l of lines) if (l.length > 10) { parseLine(F, l); F.lastLine = l.slice(0, 29); }
+    // The newest fix in this event, for the feed health check (an event that stops sending while its runners are out).
+    for (const r of S.runners.values()) if (r.feed === F.id && r.pts.length) F.newest = Math.max(F.newest || 0, (r.pts[r.pts.length - 1][0] + EPOCH) * 1000);
     // Keep each runner's fixes in time order, drop duplicates and the oldest beyond KEEP.
     for (const r of S.runners.values()) {
       if (!r.pts.length) continue;
@@ -118,7 +131,7 @@
     if (E.main && P && P.miler) {
       const pts = P.miler.points.map(p => ({ km: p.km, f: Date.parse(p.fast + ':00+11:00'), s: Date.parse(p.slow + ':00+11:00') })).sort((a, b) => a.km - b.km);
       const at = (km, k) => { if (km <= pts[0].km) return pts[0][k] - (pts[0].km - km) * 3600e3 / 8; for (let i = 1; i < pts.length; i++) if (km <= pts[i].km) { const a = pts[i - 1], b = pts[i]; return a[k] + (b[k] - a[k]) * (km - a.km) / ((b.km - a.km) || 1); } const z = pts[pts.length - 1]; return z[k] + (km - z.km) * 3600e3 / 4; };
-      m = { fast: (a, b) => at(b, 'f') - at(a, 'f'), slow: (a, b) => at(b, 's') - at(a, 's') };
+      m = { fast: (a, b) => at(b, 'f') - at(a, 'f'), slow: (a, b) => at(b, 's') - at(a, 's'), cutAt: km => at(km, 's') };
     } else m = { fast: (a, b) => (b - a) * 3600e3 / 10, slow: (a, b) => (b - a) * 3600e3 / 4 };
     modelCache.set(E.id, m);
     return m;
@@ -143,6 +156,61 @@
     if (legMs(E, a, hi, f) <= ms) return hi;
     for (let i = 0; i < 24; i++) { const mid = (lo + hi) / 2; if (legMs(E, a, mid, f) <= ms) lo = mid; else hi = mid; }
     return lo;
+  }
+
+  // ---------- when a runner is due at the next timing point: the splits fitted to how the 2026 field ran ----------
+  // data/splits.js gives each race the share of a runner's finish time used at each point (a + b × finish hours), with
+  // the point's course km (gk). A runner's finish time comes from their arrival read at their last timing point, so time
+  // spent at that aid station is part of the fit, not counted against the next leg. Tested on the 2026 Miler, arrivals
+  // later than due + grace fell from 21% of legs (the pacing table blend) to 3%. Races without a fit, and runners
+  // without a start read, keep the pacing table blend.
+  const SPLIT_KEY = { miler: 'miler', '50k': 's1', s1: 's1', s2: 's2', s3: 's3', s4: 's4', '33k': 's4' };
+  const curves = new Map();
+  function curveFor(c) {
+    const k = c && SPLIT_KEY[c.raceKey], F = k && window.GPT_SPLITS && window.GPT_SPLITS[k];
+    if (!F || !c.course || !c.course.main) return null;
+    const id = k + '|' + c.startKm + '|' + c.finishKm;
+    if (!curves.has(id)) {
+      const P = Object.values(F.points).filter(p => p.gk != null && p.gk > c.startKm + 0.1 && p.gk < c.finishKm - 0.1)
+        .map(p => ({ km: p.gk, a: p.a, b: p.b })).sort((x, y) => x.km - y.km);
+      curves.set(id, P.length ? [{ km: c.startKm, a: 0, b: 0 }, ...P, { km: c.finishKm, a: 1, b: 0 }] : null);
+    }
+    return curves.get(id);
+  }
+  function fitElapsed(C, km, h) {
+    let a = 1, b = 0;
+    for (let i = 1; i < C.length; i++) if (km <= C[i].km) { const x = C[i - 1], y = C[i], f = (km - x.km) / ((y.km - x.km) || 1); a = x.a + (y.a - x.a) * f; b = x.b + (y.b - x.b) * f; break; }
+    return (a + b * h) * h * 3600e3;
+  }
+  function fitDue(c, km) {
+    const C = curveFor(c);
+    if (!C || !c.reads.length) return null;
+    const st = c.reads.find(x => Math.abs(x.km - c.startKm) < 0.3), last = c.reads[c.reads.length - 1];
+    const arr = c.reads.find(x => Math.abs(x.km - last.km) < 0.05);  // the first read there: the In read
+    if (!st || !arr || arr === st || arr.t <= st.t) return null;
+    let lo = 0.3, hi = 80;
+    for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (fitElapsed(C, arr.km, m) < arr.t - st.t) lo = m; else hi = m; }
+    return { due: st.t + fitElapsed(C, km, (lo + hi) / 2), from: arr.t };
+  }
+  // The next timing point that's reading runners. A point that hasn't read anyone while a point further on has read
+  // several (Copper Mine Track in 2026) is skipped, or every runner would be late there. Other races' starts and
+  // finishes (the 50k's finish at Halls Gap, Stage 3's start at Mt William) aren't this runner's checkpoints.
+  const own = (p, c) => p.name !== 'Start' && (p.name !== 'Finish' || !c || Math.abs(p.km - c.finishKm) < 0.3);
+  function nextPoint(TC, E, km, c) {
+    const all = TC.points().filter(p => p.course === E && p.name !== 'Start' && p.name !== 'Finish');
+    return TC.pointsAfter(E, km).find(p => own(p, c) && (p.n > 0 || !all.some(q => q.km > p.km && q.n >= 5))) || null;
+  }
+  // At an aid station: the stop within AID_M of this fix, since when they've been there (the first of the fixes in a
+  // row near it, or their chip read there if earlier), and how long most runners stay.
+  function aidAt(r, E, p) {
+    let best = null, bd = AID_M;
+    for (const a of E.AID || []) { const d = window.GPT.metres([p[1], p[2]], [a.lat, a.lon]); if (d <= bd) { bd = d; best = a; } }
+    if (!best) return null;
+    let since = p[0];
+    for (let i = r.pts.length - 1; i >= 0; i--) { const q = r.pts[i]; if (q[0] > p[0]) continue; if (window.GPT.metres([q[1], q[2]], [best.lat, best.lon]) > AID_M) break; since = q[0]; }
+    since = (since + EPOCH) * 1000;
+    if (r.chip) for (const rd of r.chip.reads) if (Math.abs(rd.km - best.trail_km) < 0.3 && rd.t < since && since - rd.t < 3 * 3600e3 && !/\(out\)$/.test(rd.name)) since = rd.t;
+    return { name: best.name, km: best.trail_km, since, limitMin: AID_STAY[best.name] != null ? AID_STAY[best.name] : AID_STAY_DEFAULT };
   }
 
   // ---------- merge the two sources and work out every runner's position ----------
@@ -208,7 +276,14 @@
       const moved = window.GPT.metres([old[1], old[2]], [p[1], p[2]]);
       const spanMin = (p[0] - old[0]) / 60;
       gps = { lat: p[1], lon: p[2], t, course: best.E, km: best.E.route[best.ic][2], ic: best.ic, offM: best.offM,
-        stale: now - t > STALE_MIN * 60e3, stopped: spanMin >= STOPPED_MIN - 2 && moved < STOPPED_M && now - t <= STALE_MIN * 60e3 };
+        stale: now - t > STALE_MIN * 60e3, stopped: spanMin >= STOPPED_MIN - 2 && moved < STOPPED_M && now - t <= STALE_MIN * 60e3,
+        aid: aidAt(r, best.E, p), offFixes: 0, offMin: 0 };
+      // Off the course for a while: fixes in a row more than 150 m from it, and over how long.
+      if (best.offM > 150) {
+        let n = 0, t0 = p[0];
+        for (let i = r.pts.length - 1; i >= 0 && n < 60; i--) { const q = r.pts[i]; if (q[0] > p[0]) continue; if (best.E.snap(q[1], q[2]).offM <= 150) break; n++; t0 = q[0]; }
+        gps.offFixes = n; gps.offMin = (p[0] - t0) / 60;
+      }
     }
     const c = r.chip, read = c && c.last;
     let chip = null;
@@ -229,11 +304,17 @@
       stale: src === 'gps' && gps.stale,                       // the tracker has gone quiet and nothing newer from the chips
       quiet: !!(gps && gps.stale),                             // the tracker itself has gone quiet (the chips may still place them)
       stopped: src === 'gps' && gps.stopped,
-      chipAt: read || null, gpsT: gps ? gps.t : 0, est: null, next: null
+      chipAt: read || null, gpsT: gps ? gps.t : 0, est: null, next: null,
+      offFixes: src === 'gps' ? gps.offFixes : 0, offMin: src === 'gps' ? gps.offMin : 0
     });
+    // At an aid station: their newest position is there (a GPS fix, or a chip read there that isn't the Out read).
+    if (gps && gps.aid && (src === 'gps' || (Math.abs(hard.km - gps.aid.km) < 0.3 && !/\(out\)$/.test(read.name)))) {
+      const stayMs = now - gps.aid.since;
+      pos.atAid = Object.assign({}, gps.aid, { stayMs, over: stayMs > gps.aid.limitMin * 60e3 });
+    }
     // Where they probably are now, and when they're due at the next timing point.
     const E = pos.course, f = fracOf(c);
-    const nextPt = TC ? TC.pointsAfter(E, pos.km)[0] : null;
+    const nextPt = TC ? nextPoint(TC, E, pos.km, c) : null;
     const finKm = c ? c.finishKm : E.totalKm;
     const cap = nextPt ? Math.min(nextPt.km, finKm) : finKm;
     // At their pace they'd have reached the next timing point by now, but there's no read there: they're somewhere
@@ -250,9 +331,13 @@
     // Late only counts when nothing says they're still moving: no fresh GPS fix, or one that isn't moving.
     if (nextPt && pos.onCourse) {
       const a = chip && chip.km <= pos.km + 0.05 ? chip : hard;
-      const due = a.t + legMs(E, a.km, nextPt.km, f), latest = a.t + legMs(E, a.km, nextPt.km, 1);
-      const grace = Math.max(LATE_MIN * 60e3, (due - a.t) / 4), moving = !!(gps && !gps.stale && !gps.stopped);
-      pos.next = { name: nextPt.name, km: nextPt.km, due, latest, late: now > due + grace && !moving, overdue: now > latest && !moving, lateMs: now - due };
+      const fit = chip && chip.km <= pos.km + 0.05 ? fitDue(c, nextPt.km) : null, from = fit ? fit.from : a.t;
+      const due = fit ? fit.due : a.t + legMs(E, a.km, nextPt.km, f);
+      // Overdue: past the cut-off there (the Miler, from the pacing table's cut-offs), else past cut-off pace from the last read.
+      const cut = c && c.raceKey === 'miler' && model(E).cutAt ? model(E).cutAt(nextPt.km) : null;
+      const latest = cut || a.t + legMs(E, a.km, nextPt.km, 1);
+      const grace = Math.max(LATE_MIN * 60e3, (due - from) / 4), moving = !!(gps && !gps.stale && !gps.stopped);
+      pos.next = { name: nextPt.name, km: nextPt.km, due, latest, late: now > due + grace && !moving, overdue: now > latest && !moving, lateMs: now - due, fitted: !!fit };
     }
     r.pos = pos;
   }
@@ -329,18 +414,29 @@
   // Runners on course between two km, by course.
   function between(E, k0, k1) { return list().filter(r => r.pos.course === E && r.pos.onCourse && !r.pos.stale && cur(r) >= Math.min(k0, k1) && cur(r) < Math.max(k0, k1)); }
   // The runners to keep an eye on: not moving, off the course, late at the next timing point, or a tracker gone quiet
-  // with nothing from the chips since.
+  // with nothing from the chips since. A runner not moving, or with a quiet tracker, at an aid station is in `aid` (with
+  // how long they've been there) until they've stayed longer than most runners do there; then they're flagged as usual.
   function watch() {
-    const on = list().filter(r => r.pos.onCourse);
+    const atAid = r => r.pos.atAid && !r.pos.atAid.over;
+    const on = list().filter(r => r.pos.onCourse || r.pos.atAid);
     const recent = on.filter(r => !r.pos.stale).length;
+    const quietOn = recent >= 3 || CHIP();
+    // Quiet away from an aid station (or longer than most stay there) heads the list once it's been QUIET_ESC_MIN.
+    const quietRank = r => (r.pos.ageMs >= QUIET_ESC_MIN * 60e3 ? 1 : 0);
     return {
-      stopped: on.filter(r => r.pos.stopped).sort((a, b) => b.pos.km - a.pos.km),
-      // A recent GPS fix more than 150 m from any course (the chips can't place anyone off the course).
-      off: list().filter(r => !r.pos.onCourse && r.pos.src === 'gps' && !r.pos.stale).sort((a, b) => b.pos.offM - a.pos.offM),
-      late: on.filter(r => r.pos.next && r.pos.next.late).sort((a, b) => b.pos.next.lateMs - a.pos.next.lateMs),
-      quiet: recent >= 3 || CHIP() ? on.filter(r => r.pos.stale && r.pos.ageMs < 6 * 3600e3).sort((a, b) => a.pos.ageMs - b.pos.ageMs) : []
+      stopped: on.filter(r => r.pos.stopped && !atAid(r)).sort((a, b) => b.pos.km - a.pos.km),
+      // Recent GPS fixes more than 150 m from any course, OFF_FIXES in a row over OFF_MIN minutes (a single wobbly fix
+      // isn't flagged), not at an aid station. Longest off first.
+      off: list().filter(r => !r.pos.onCourse && r.pos.src === 'gps' && !r.pos.stale && !atAid(r) && r.pos.offFixes >= OFF_FIXES && r.pos.offMin >= OFF_MIN)
+        .sort((a, b) => b.pos.offMin - a.pos.offMin || b.pos.offM - a.pos.offM),
+      late: on.filter(r => r.pos.next && r.pos.next.late && !atAid(r)).sort((a, b) => b.pos.next.lateMs - a.pos.next.lateMs),
+      quiet: quietOn ? on.filter(r => r.pos.stale && r.pos.ageMs < 6 * 3600e3 && !atAid(r)).sort((a, b) => quietRank(b) - quietRank(a) || b.pos.ageMs - a.pos.ageMs) : [],
+      aid: on.filter(r => atAid(r) && (r.pos.stopped || r.pos.stale)).sort((a, b) => b.pos.atAid.stayMs - a.pos.atAid.stayMs)
     };
   }
+  // How a runner at an aid station reads: "Jimmy Creek Camp, 25 min (most leave by 45)".
+  const aidLine = r => r.pos.atAid ? `${r.pos.atAid.name.replace(/\s*\((water point|emergency aid)\)$/i, '')}, ${Math.round(r.pos.atAid.stayMs / 60e3)} min` +
+    (r.pos.atAid.over ? ` (longer than most stay, ${r.pos.atAid.limitMin})` : ` (most leave by ${r.pos.atAid.limitMin})`) : '';
   const leaders = E => list().filter(r => r.pos.course === E && r.pos.onCourse && !r.pos.stale).sort((a, b) => cur(b) - cur(a));
 
   function status() {
@@ -433,5 +529,62 @@
   }
 
   function onUpdate(fn) { S.listeners.push(fn); if (ready()) fn(); }
-  window.GPTTracking = { state: S, ready, byBib, near, between, watch, leaders, list, cur, status, links, where, nearHTML, nearLine, draw, onUpdate, ago, dist, who, seen, hm, base: BASE, relay: RELAY, gps: GPS, chip: () => !!CHIP() };
+  // ---------- feed health: the data problems GPT100 2026 had, caught as they happen ----------
+  // Each was found late, or not at all, by a person: the Miler's chip times read as the next day (1 h 44 min), the 50k and
+  // stage race GPS event stopping (81 min), Copper Mine Track never reading anyone (the whole race), and no chip times
+  // for Stages 2 to 4. Every one shows here within a few minutes. Also a pre-race check: each feed, and what it holds.
+  function health(now) {
+    now = now || Date.now();
+    const issues = [], feeds = [], TC = CHIP();
+    const mins = ms => Math.round(ms / 60e3);
+    for (const F of FEEDS) {
+      const nm = F.name || F.id, mine = [...S.runners.values()].filter(r => r.feed === F.id);
+      const out = mine.filter(r => r.pos && !r.pos.done && (!TC || (r.chip && !r.chip.status)));
+      feeds.push(`GPS ${nm}: ${F.error ? 'error, ' + F.error : !F.ready ? 'loading' : F.live ? 'live' : F.lastLine === 'undef' ? 'not started yet' : 'not marked live'}, ${mine.filter(r => r.pts.length).length} of ${mine.length} trackers with positions` + (F.newest ? `, newest ${ago(now - F.newest)}` : ''));
+      if (F.error && F.ready) issues.push({ level: 'bad', text: `GPS ${nm}: can't read the feed (${F.error}).` });
+      const age = F.newest ? now - F.newest : 0;
+      if (F.newest && age > 20 * 60e3 && age < 12 * 3600e3 && out.length >= 3)
+        issues.push({ level: 'bad', text: `GPS ${nm}: no new positions for ${mins(age)} min, with ${out.length} of its runners still out. The event may have stopped: check the provider for another event their trackers send to, and add it to tracking.gps.` });
+    }
+    if (TC) {
+      const st = TC.state, pts = TC.points();
+      feeds.push(`Timing list: ${st.error && !st.ready ? 'error, ' + st.error : !st.ready ? 'loading' : `${st.rows} rows, ${pts.filter(p => p.n).length} of ${pts.length} timing points with reads, read ${ago(now - st.updated)}`}`);
+      if (st.ready && st.error) issues.push({ level: 'bad', text: `Timing list: the last read failed (${st.error}).` });
+      if (st.ready && now - st.updated > 5 * 60e3) issues.push({ level: 'warn', text: `Timing list: last read ${mins(now - st.updated)} min ago.` });
+      // A timing point no one has been read at, while a point further on the same course has read several. Starts and
+      // finishes belong to each race's own day, so they're left out. (In 2026 this caught Copper Mine Track all race,
+      // and Yarram Gap from late Friday, whose first reads reached the list up to 5 hours late.)
+      const mid = pts.filter(p => p.name !== 'Start' && p.name !== 'Finish');
+      for (const p of mid) {
+        const further = mid.filter(q => q.course === p.course && q.km > p.km + 0.2 && q.n >= 5).reduce((m, q) => Math.max(m, q.n), 0);
+        if (!p.n && further) issues.push({ level: 'warn', text: `${p.name}: no chip reads, though ${further} runners have been read further on. The reader is down or its column isn't in the timing list. The app skips it for "late".` });
+      }
+      if (st.future && st.future.length) issues.push({ level: 'bad', text: `Timing list: ${st.future.length} chip time${st.future.length === 1 ? ' is' : 's are'} ahead of the clock and ignored. The list's days may be read wrong (D:HH:MM:SS counts from the event's first day); check tracking.chipDay.` });
+      if (st.badContests && st.badContests.length) issues.push({ level: 'warn', text: `Timing list: contest not recognised, runners not placed: ${st.badContests.map(([n, k]) => `"${n}" (${k})`).join(', ')}. Name them in tracking.chipContests.` });
+      // A race under way with its runners well into the course on GPS and no chip times today.
+      const noChip = new Map();
+      for (const r of S.runners.values()) {
+        const c = r.chip;
+        if (!c || c.status || c.reads.length || !r.pos || r.pos.src !== 'gps' || r.pos.done) continue;
+        if (r.pos.km - c.startKm > 3 && now - r.pos.t < 30 * 60e3) noChip.set(c.raceLabel, (noChip.get(c.raceLabel) || 0) + 1);
+      }
+      for (const [race, n] of noChip) if (n >= 5) issues.push({ level: 'bad', text: `${race}: ${n} runners are well into the course on GPS with no chip times today. The timing list may not carry this race; ask the timing team.` });
+    }
+    return { issues, feeds };
+  }
+  function healthHTML(opts) {
+    const H = health(), o = opts || {};
+    if (!H.issues.length && !o.always) return '';
+    return `<div class="trk-health"><h4>Feed health</h4>` + (H.issues.length ? H.issues.map(i => `<p class="trk-health-${i.level}">${esc(i.text)}</p>`).join('') : '<p class="muted">No problems found in the feeds.</p>') +
+      (o.feeds ? `<details><summary>Each feed</summary>${H.feeds.map(f => `<p class="muted">${esc(f)}</p>`).join('')}</details>` : '') + '</div>';
+  }
+  // How each Runner watch line reads, the same on every screen.
+  const lines = {
+    aid: r => aidLine(r),
+    off: r => `${dist(r.pos.offM)} off the course for ${Math.max(1, Math.round(r.pos.offMin))} min`,
+    quiet: r => `No fix for ${Math.round(r.pos.ageMs / 60e3)} min` + (r.pos.atAid ? ` (at ${r.pos.atAid.name}, longer than most stay)` : r.pos.ageMs >= QUIET_ESC_MIN * 60e3 ? ', away from any aid station' : ''),
+    stopped: r => r.pos.atAid ? `Not moving at ${r.pos.atAid.name} for ${Math.round(r.pos.atAid.stayMs / 60e3)} min, longer than most stay (${r.pos.atAid.limitMin})` : 'Not moving for 20 min, away from any aid station'
+  };
+
+  window.GPTTracking = { state: S, ready, byBib, near, between, watch, leaders, list, cur, status, links, where, nearHTML, nearLine, draw, onUpdate, ago, dist, who, seen, hm, health, healthHTML, lines, base: BASE, relay: RELAY, gps: GPS, chip: () => !!CHIP() };
 })();

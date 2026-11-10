@@ -289,7 +289,10 @@
       }
       // Every timing point in the list is a place the runner will be read (so the app knows the next one), read or not yet.
       // (One list holds every course: a column counts as not matched only if it matches no runner's course.)
-      const pointOf = rd => { const p = pointFor(rd.label, E, race); if (!p) unmatched.add(rd.label); else { matched.add(rd.label); const key = E.id + '|' + p.name; if (!pts.has(key)) pts.set(key, { name: p.name, course: E, km: p.kms[0], n: 0, lastT: 0 }); } return p; };
+      // Keyed by name and km: "Start" and "Finish" are a different place for each race (the 50k finishes at Halls Gap,
+      // the Miler at Dunkeld), so their reads mustn't be counted together.
+      const ptKey = p => E.id + '|' + p.name + '|' + p.kms[0].toFixed(2);
+      const pointOf = rd => { const p = pointFor(rd.label, E, race); if (!p) unmatched.add(rd.label); else { matched.add(rd.label); const key = ptKey(p); if (!pts.has(key)) pts.set(key, { name: p.name, course: E, km: p.kms[0], n: 0, lastT: 0 }); } return p; };
       reads.filter(rd => !rd.t).forEach(pointOf);
       const out = [], kmOfBase = new Map();
       let lastKm = -1;
@@ -303,7 +306,7 @@
         if (io.dir) kmOfBase.set(io.base, km);
         lastKm = Math.max(lastKm, km);
         out.push({ name: p.name + (io.dir === 'out' ? ' (out)' : ''), km, t: rd.t });
-        const q = pts.get(E.id + '|' + p.name); q.n++; q.lastT = Math.max(q.lastT, rd.t);
+        const q = pts.get(ptKey(p)); q.n++; q.lastT = Math.max(q.lastT, rd.t);
       }
       // The Status column first; else the Place column when it holds a status (DNF, DNS, DSQ, OTL) instead of a place.
       let st = statusOf(status);
@@ -326,16 +329,18 @@
   }
 
   // ---------- reading the feed ----------
-  // The race start days (data/races.js) anchor the feed's times of day. The staff app and the map page don't load
-  // that file, so it's added here (the same build's copy, saved for offline like every other file).
+  // The race start days (data/races.js) anchor the feed's times of day, and the fitted splits (data/splits.js) give the
+  // tracker when each runner is due at their next timing point. The staff app and the map page don't load those files,
+  // so they're added here (the same build's copies, saved for offline like every other file).
   const VER = ((document.currentScript && document.currentScript.src || '').match(/\?v=[\w.]+/) || [''])[0];
+  const load = (src, have) => new Promise(done => {
+    if (have()) return done();
+    const el = document.createElement('script'); el.src = src + VER; el.onload = el.onerror = () => done();
+    document.head.appendChild(el); setTimeout(done, 8000);
+  });
   let racesP = null;
   const races = () => racesP = racesP || new Promise(done => {
-    const go = () => {
-      if (window.GPT_RACES) return done();
-      const el = document.createElement('script'); el.src = 'data/races.js' + VER; el.onload = el.onerror = () => done();
-      document.head.appendChild(el); setTimeout(done, 8000);
-    };
+    const go = () => Promise.all([load('data/races.js', () => window.GPT_RACES), load('data/splits.js', () => window.GPT_SPLITS)]).then(() => done());
     if (document.readyState === 'loading') addEventListener('DOMContentLoaded', go); else go();
   });
   let timer = null;

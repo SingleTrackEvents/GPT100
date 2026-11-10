@@ -19,6 +19,18 @@ The database, the password and the 15-minute timer are already set up for Race C
    - **Settings, Variables and Secrets:** `RC_PASSWORD` (the medical password) and `TIMING_URL` (see [TIMING.md](TIMING.md)).
    - **Settings, Trigger Events:** the cron trigger, every 15 minutes. See [REFRESH_WORKER.md](REFRESH_WORKER.md).
 
+## Feed health alerts
+
+On the same 15-minute timer, during the race window, the Worker checks the feeds and sends each new problem to the phone with ntfy, and again when it clears:
+
+- a GPS event with no new positions for 20 minutes while the timing list is still changing (the race is on),
+- the timing list unchanged for an hour while trackers are still sending,
+- a timing column with no reads while columns further on have them (Copper Mine Track in 2026).
+
+To turn the alerts on, add the secret `NTFY_TOPIC` to the Worker (the same topic as the weather watch's works). Without it the checks still run and show in the Worker's log and in `--now` output.
+
+The archive also follows every GPS event in the app's published config (`tracking.gps` in `data/config.js`), as well as `ARCHIVE_GPS`. In 2026 the stage race trackers moved to the all-trackers event on the Friday; with this, an event added to the app on the day is archived too.
+
 ## 2. Check it's working
 
 From a computer with this repository:

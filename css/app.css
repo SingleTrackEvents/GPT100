@@ -619,6 +619,15 @@ tr.muted td { color: var(--muted); }
 /* Live runner tracking (js/tracking.js) */
 .trk .row { align-items: center; }
 .trk-src, .trk-status { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
+/* Feed health (js/tracking.js health()): data problems in the GPS and timing feeds, red for a problem, amber for a warning. */
+.trk-health { margin: 8px 0; }
+.trk-health p { font-size: 12px; margin: 4px 0; padding: 6px 8px; border-radius: 6px; }
+.trk-health .trk-health-bad { background: var(--red-bg); color: var(--red); border-left: 3px solid var(--red); }
+.trk-health .trk-health-warn { background: var(--amber-bg); color: var(--amber); border-left: 3px solid var(--amber); }
+.trk-health details p { background: none; padding: 0 8px; }
+/* Runners at aid stations within the usual stay: listed, folded away, not flagged. */
+details.trk-aid { margin: 10px 0 0; }
+details.trk-aid summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .trk-links { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
 .trk-stale { color: var(--amber); font-weight: 600; }
 .trk-mk { min-width: 30px; height: 18px; padding: 0 4px; border-radius: 9px; background: #1666c9; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.5); font: 700 10px/14px var(--body); text-align: center; white-space: nowrap; }

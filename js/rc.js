@@ -232,12 +232,14 @@
     if (!TR.ready()) { el.innerHTML = `<p class="rc-live">${esc(TR.status())}</p>` + TR.links(); return; }
     const w = TR.watch();
     const row = (r, why) => `<div class="row"><span>${TR.who(r)}<span class="sub">${why}, km ${TR.cur(r).toFixed(1)}${r.pos.est ? ' (estimated)' : ''}${r.pos.course !== G ? ' (' + esc(r.pos.course.label) + ')' : ''}. ${TR.where(r)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(r.bib)}">Find</button></div>`;
-    el.innerHTML = `<h3>Runner watch</h3><p class="rc-live">${esc(TR.status())}</p>${TR.links()}` +
-      (w.stopped.length ? `<h4>Not moving for 20 min</h4>` + w.stopped.slice(0, 10).map(r => row(r, 'Not moving')).join('') : '') +
-      (w.off.length ? `<h4>Off the course</h4>` + w.off.slice(0, 10).map(r => row(r, TR.dist(r.pos.offM) + ' off the course')).join('') : '') +
+    const L = TR.lines;
+    el.innerHTML = `<h3>Runner watch</h3><p class="rc-live">${esc(TR.status())}</p>${TR.links()}` + TR.healthHTML({ feeds: true }) +
+      (w.quiet.length ? `<h4>Tracker gone quiet</h4>` + w.quiet.slice(0, 10).map(r => row(r, L.quiet(r))).join('') : '') +
+      (w.stopped.length ? `<h4>Not moving</h4>` + w.stopped.slice(0, 10).map(r => row(r, L.stopped(r))).join('') : '') +
+      (w.off.length ? `<h4>Off the course</h4>` + w.off.slice(0, 10).map(r => row(r, L.off(r))).join('') : '') +
       (w.late.length ? `<h4>Late at the next checkpoint</h4>` + w.late.slice(0, 10).map(r => row(r, (r.pos.next.overdue ? 'Overdue' : 'Late') + ' at ' + esc(r.pos.next.name))).join('') : '') +
-      (w.quiet.length ? `<h4>Tracker gone quiet</h4>` + w.quiet.slice(0, 10).map(r => row(r, 'No fix')).join('') : '') +
-      (!w.stopped.length && !w.off.length && !w.late.length && !w.quiet.length ? '<p class="rc-live">Everyone on course is moving and accounted for.</p>' : '');
+      (!w.stopped.length && !w.off.length && !w.late.length && !w.quiet.length ? '<p class="rc-live">Everyone on course is moving and accounted for.</p>' : '') +
+      (w.aid.length ? `<details class="trk-aid"><summary>At aid stations (${w.aid.length}), not moving or no fix, within the usual stay</summary>` + w.aid.map(r => row(r, esc(L.aid(r)))).join('') + '</details>' : '');
   }
   if (window.GPTTracking) GPTTracking.onUpdate(() => { if (built) { renderWatch(); render(); } });
   // Flash a missing required field red (and focus the first one).
