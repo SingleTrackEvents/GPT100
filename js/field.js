@@ -7,6 +7,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const one = x => (Math.round(x * 10) / 10).toFixed(1);
   const tf = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const LV = window.GPTLive; // the line to Race Control (js/live.js)
   let here = null, watchId = null, map = null, layer = null, runnerLayer = null, runnerSheet = null, fs = null, RP = null;
   // The race clock: the demo's when it's on (js/demo.js, ?demo=), so cut-offs and expected times can be rehearsed.
   const D0 = window.GPT100_DEMO ? Date.parse(GPT100_DEMO.contests['GPT100 Miler'].start + ':00+11:00') : 0;
@@ -210,6 +211,8 @@
     if (window.GPTHeading) GPTHeading.gps(c);
     addTrail(c.latitude, c.longitude, c.accuracy);
     place(c.latitude, c.longitude, { acc: c.accuracy, alt: c.altitude, t: p.timestamp });
+    // On the Control board's map, if this phone is set to show there (at most every 30 seconds).
+    if (LV && here && LV.field.cfg().on) LV.field.share({ lat: +c.latitude.toFixed(5), lon: +c.longitude.toFixed(5), acc: Math.round(c.accuracy), t: p.timestamp, km: Math.round(here.r.km * 10) / 10, course: here.E.id, offM: Math.round(here.offM) });
   }
   function gpsError(e) {
     const b = locBtn(); if (b) b.classList.remove('busy');
@@ -222,6 +225,7 @@
     if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     if (on && window.GPTHeading) GPTHeading.start();
     if (on && navigator.geolocation) watchId = navigator.geolocation.watchPosition(gotFix, gpsError, { enableHighAccuracy: true, maximumAge: 15000 });
+    shareDraw();
   }
   // On the Where tab the message sits under the button; on the map it floats over the map for a few seconds.
   let toastT = null;
@@ -470,7 +474,85 @@
   // No location, nothing to send: the buttons go dead rather than send an old one.
   function sendLinks() {
     [['fdSend', false], ['fdUrgent', true]].forEach(([id, u]) => { const a = $(id); a.href = here ? 'https://wa.me/?text=' + encodeURIComponent(message(u)) : '#'; a.setAttribute('aria-disabled', here ? 'false' : 'true'); });
+    rcDraw();
   }
+  // ---------- straight onto the Control board (js/live.js) ----------
+  // The location and note as an incident Race Control has to acknowledge. Offered only while a board is being
+  // watched; WhatsApp above stays the way to reach the Safety Officer and Rescue Team group.
+  function rcSend(urgent) {
+    if (!here || !LV) return;
+    const E = here.E, note = $('fdNote').value.trim().slice(0, 300), far = here.offM > 300;
+    const body = { app: 'field', urgent, from: LV.field.cfg().name || '', race: rname(), lat: +here.lat.toFixed(5), lon: +here.lon.toFixed(5), t: here.t,
+      what: (urgent ? 'Casualty here' : 'Location from the field') + (note ? ': ' + note : '.') + (far ? ` (${dist(here.offM)} off the course)` : '') + (here.gps ? '' : ' (position from a typed km)') };
+    if (here.gps) body.acc = Math.round(here.gps.acc);
+    if (!far && MAIN.courses.includes(E)) { body.course = E.id; body.km = Math.round(here.r.km * 10) / 10; }
+    if (here.w3w) body.w3w = here.w3w;
+    LV.help.send(body); rcDraw();
+  }
+  function rcDraw() {
+    const box = $('fdRc'); if (!box || !LV) return;
+    const cur = LV.help.current(), open = LV.help.open();
+    box.hidden = !cur && !open;
+    if (box.hidden) return;
+    const wait = !!cur && cur.state === 'queued';
+    $('fdRcSend').disabled = $('fdRcUrgent').disabled = !here || wait || !open;
+    let h = '';
+    if (cur) {
+      const n = cur.num ? '#' + cur.num : 'it';
+      const L = cur.state === 'refused' ? ['warn', cur.why === 'busy' ? 'Too many messages from this phone just now. Use WhatsApp or the radio.' : 'Race Control isn\'t taking messages from the app right now. Use WhatsApp or the radio.']
+        : cur.closed ? ['', `Race Control has closed ${n}.`]
+        : wait ? (cur.tries ? ['warn', 'No signal. It\'s kept on this phone and goes to Race Control when there is. Use the radio if it can\'t wait.'] : ['', 'Sending to Race Control…'])
+        : cur.state === 'ack' ? ['ok', `Race Control acknowledged ${n} at ${tf.format(cur.ack)}.${cur.sent ? ` Help sent ${tf.format(cur.sent)}.` : ''}`]
+        : ['', `On the Control board as ${n}, ${tf.format(cur.sentAt || cur.t)}. Waiting for Race Control to acknowledge.`];
+      h = `<p class="lv-line ${L[0]}">${esc(L[1])}<span class="fd-rc-what">${esc(((cur.body || {}).what || '').slice(0, 90))}</span><button type="button" class="fd-linkbtn" id="fdRcClear">${wait ? 'Cancel it' : 'Clear'}</button></p>`;
+    }
+    const out = $('fdRcMsg');
+    if (out.dataset.h !== h) { out.dataset.h = h; out.innerHTML = h; const c = $('fdRcClear'); if (c) c.onclick = () => { LV.help.clear(); rcDraw(); }; }
+  }
+
+  // ---------- show this phone on the Control map (js/live.js) ----------
+  // A call sign and the team code Race Control gives out. Then every GPS fix (Keep updating) goes to the board, at
+  // most every 30 seconds, while the app is open. The card only shows once Race Control has set a code.
+  function shareDraw() {
+    const box = $('fdShare'); if (!box || !LV) return;
+    const c = LV.field.cfg(), avail = LV.field.available(), body = $('fdShareBody');
+    box.hidden = !avail && !c.on;
+    if (box.hidden) return;
+    if (c.on) {
+      const key = ['on', c.name, LV.field.status(), watchId != null].join('|');
+      if (body.dataset.k === key) return;
+      body.dataset.k = key;
+      body.innerHTML = `<p class="lv-line ok">Sharing as <b>${esc(c.name)}</b>. ${esc(LV.field.status() || 'Your position goes with the next GPS fix.')}</p>
+        ${watchId == null ? '<p class="lv-line warn">Keep updating is off, so Race Control only gets your position when you tap Where am I? <button type="button" class="fd-linkbtn" id="fdShareFollow">Turn it on</button></p>' : ''}
+        <p class="fd-hint">Race Control sees this phone on its map, about every 30 seconds while the app is open and on screen. It stops when the app is closed or the phone sleeps.</p>
+        <button type="button" class="btn" id="fdShareStop">Stop sharing</button>`;
+      $('fdShareStop').onclick = () => { LV.field.set({ on: false }); shareDraw(); };
+      if ($('fdShareFollow')) $('fdShareFollow').onclick = () => { $('fdFollow').checked = true; follow(true); };
+      return;
+    }
+    if (body.dataset.k === 'form') return;
+    body.dataset.k = 'form';
+    body.innerHTML = `<p class="fd-hint">Safety Officers and sweeps: let Race Control see this phone on its map, so it knows who is nearest when something happens. Race Control gives out the team code.</p>
+      <form id="fdShareForm" autocomplete="off">
+        <label class="fd-label" for="fdShareName">Your call sign</label><input id="fdShareName" type="text" maxlength="24" placeholder="e.g. Sweep 2 or SO Mt Rosea" value="${esc(c.name)}">
+        <label class="fd-label" for="fdShareCode">Team code</label><input id="fdShareCode" type="text" maxlength="20" autocapitalize="characters" spellcheck="false" value="${esc(c.code)}">
+        <button class="btn" type="submit">Start sharing</button>
+      </form><p class="fd-hint bad" id="fdShareErr" role="alert"></p>`;
+    $('fdShareForm').onsubmit = async e => {
+      e.preventDefault();
+      const name = $('fdShareName').value.trim().slice(0, 24), code = $('fdShareCode').value.trim(), err = $('fdShareErr'), btn = e.target.querySelector('button');
+      if (!name || !code) { err.textContent = 'Type a call sign and the team code.'; return; }
+      btn.disabled = true; err.textContent = '';
+      const bad = await LV.field.check(code);
+      btn.disabled = false;
+      // No signal to check the code with: it's taken on trust, and the card says so if Race Control turns it down.
+      if (bad && !/^No signal/.test(bad)) { err.textContent = bad + '.'; return; }
+      LV.field.set({ on: true, name, code });
+      if (navigator.geolocation && watchId == null) { $('fdFollow').checked = true; follow(true); } else shareDraw();
+    };
+  }
+  if (LV) LV.onChange(() => { rcDraw(); shareDraw(); });
+
   // The last location (with its time), the note and Keep updating are kept on this phone through a reload.
   function keep() {
     rstore.set('here', here && { lat: here.lat, lon: here.lon, cid: here.E.id, ic: here.r.ic, offM: here.offM, gps: here.gps, t: here.t, manual: here.manual, mk: here.mk });
@@ -772,6 +854,8 @@
   });
   // The Send buttons do nothing without a location, and rebuild the message as they're tapped (for the fix age).
   ['fdSend', 'fdUrgent'].forEach(id => $(id).addEventListener('click', e => { if (!here) e.preventDefault(); else sendLinks(); }));
+  $('fdRcSend').onclick = () => rcSend(false);
+  $('fdRcUrgent').onclick = () => { if (confirm('Put an URGENT casualty at your location on the Control board?')) rcSend(true); };
   $('fdNote').value = rstore.get('note', '');
   $('fdNote').addEventListener('input', () => { rstore.set('note', $('fdNote').value); sendLinks(); });
   sendLinks(); restore();

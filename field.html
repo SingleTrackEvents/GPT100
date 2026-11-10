@@ -64,6 +64,13 @@
         <a id="fdSend" class="fd-big fd-wa" href="#" target="_blank" rel="noopener">Send my location</a>
       </div>
       <p class="fd-hint">Your note goes in this and the Urgent message. Opens WhatsApp with the message ready. Pick the Safety Officer and Rescue Team group or Event HQ, then send. With weak signal it sends when it can.</p>
+      <!-- Straight onto the Control board, while Race Control is watching it (js/live.js) -->
+      <div id="fdRc" class="fd-rc" hidden>
+        <h3>Or put it on the Control board</h3>
+        <div class="fd-rcbtns"><button id="fdRcSend" class="btn" type="button">My location</button><button id="fdRcUrgent" class="btn fd-rc-urgent" type="button">Urgent: casualty here</button></div>
+        <div id="fdRcMsg" role="status"></div>
+        <p class="fd-hint">Goes to Race Control's screen with your position and note, no WhatsApp needed. With no signal it's kept and sent when there is. You'll see here when they acknowledge it.</p>
+      </div>
     </section>
 
     <section class="fd-card fd-wayout">
@@ -78,6 +85,11 @@
     </section>
 
   </div>
+  <!-- Show this phone on the Control board's map: a call sign and the team code from Race Control (js/live.js) -->
+  <section class="fd-card fd-share" id="fdShare" hidden>
+    <h2>Show me on the Control map</h2>
+    <div id="fdShareBody"></div>
+  </section>
   </div>
 
   <!-- Map: big, kept to the picked race -->

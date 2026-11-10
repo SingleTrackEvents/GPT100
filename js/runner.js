@@ -147,14 +147,15 @@
   const rlab = () => race.short + (race.stages.length > 1 ? ' ' + stage.label : '');
   const locBtn = () => document.querySelector('.rn-locbtn');
   // GPS fix; then() runs once you're placed (the Help tab's Share uses it too).
-  function locate(then) {
-    if (!E()) { msg('Where am I? needs this race\'s map, which isn\'t in the app yet.', true); return; }
-    if (!navigator.geolocation) { msg('This phone can\'t share its location with the app.', true); return; }
+  // bad() runs instead if no fix comes (Tell Race Control still sends, without a position).
+  function locate(then, bad) {
+    if (!E()) { msg('Where am I? needs this race\'s map, which isn\'t in the app yet.', true); bad && bad(); return; }
+    if (!navigator.geolocation) { msg('This phone can\'t share its location with the app.', true); bad && bad(); return; }
     if (window.GPTHeading) GPTHeading.start(); // the compass, for the arrow on your dot (asked from this tap)
     msg(UL('finding'), false, true);
     const b = locBtn(); if (b) b.classList.add('busy');
     // Some phones never answer at all: give up after 30 s (a late fix still places you).
-    const fail = e => { clearTimeout(wait); if (b) b.classList.remove('busy'); msg(UL(e.code === 1 ? 'gpsBlocked' : 'gpsNone'), true); $('rnShareMsg').textContent = T()[e.code === 1 ? 'gpsBlocked' : 'gpsNone']; $('rnW3wMsg').textContent = $('rnShareMsg').textContent; };
+    const fail = e => { clearTimeout(wait); if (b) b.classList.remove('busy'); msg(UL(e.code === 1 ? 'gpsBlocked' : 'gpsNone'), true); $('rnShareMsg').textContent = T()[e.code === 1 ? 'gpsBlocked' : 'gpsNone']; $('rnW3wMsg').textContent = $('rnShareMsg').textContent; bad && bad(e); };
     const wait = setTimeout(() => fail({ code: 3 }), 30000);
     navigator.geolocation.getCurrentPosition(p => { clearTimeout(wait); if (b) { b.classList.remove('busy'); b.classList.add('on'); } msg(fill(UL('located'), { acc: Math.round(p.coords.accuracy) })); if (window.GPTHeading) GPTHeading.gps(p.coords); if ($('rnProf').hidden) profShow(true); place(p.coords.latitude, p.coords.longitude, p.coords.accuracy); then && then(); },
       fail, { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 });
@@ -531,8 +532,82 @@
     $('rnCard').querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => { ticks[cb.dataset.i] = cb.checked; store.set('cardTicks', ticks); });
     $('rnCard').querySelectorAll('details').forEach(d => d.ontoggle = () => { open[d.dataset.i] = d.open; store.set('cardOpen', open); });
     $('rnCard').querySelectorAll('[data-go]').forEach(b => b.onclick = () => setTab(b.dataset.go));
-    textLink(); showW3w();
+    textLink(); showW3w(); rcShown = ''; rcDraw();
   }
+
+  // ---------- Tell Race Control (js/live.js: GPTLive.help) ----------
+  // A message to the Control board: the bib, the position and what's wrong. Only offered while a board is watching
+  // (the Worker says so), so it never goes to an empty room. Call 000 and Call race medical stay above it. What's sent
+  // is in English whatever the Help language, so the board can read it. [key, label, English, urgent]
+  const LV = window.GPTLive;
+  const RC_WHAT = [['hurt', 'rcHurt', 'I\'m hurt or sick', true], ['other', 'rcOther', 'Another runner needs help', true], ['lost', 'rcLost', 'I\'m lost', false], ['else', 'rcElse', 'Something else', false]];
+  let rcShown = '', rcWas = '';
+  function rcDraw() {
+    const box = $('rnRc'); if (!box || !LV) return;
+    const U = T(), cur = LV.help.current(), body = $('rnRcBody');
+    // The form stays once it's being filled in, even if the board has just gone quiet: sending then says so.
+    const started = rcShown.startsWith('form') && body.querySelector('input:checked, #rnRcNote:not(:placeholder-shown)');
+    if (!U.rcSend || (!cur && !LV.help.open() && !started)) { box.hidden = true; rcShown = ''; return; }
+    box.hidden = false; $('rnRcTitle').textContent = U.rcTitle;
+    const tm = t => hm.format(new Date(t));
+    if (!cur) {
+      const key = 'form:' + viewLang();
+      if (rcShown === key) return;
+      rcShown = key;
+      body.innerHTML = `<p class="fd-hint rn-rc-intro">${rich(U.rcIntro)}</p>
+        <label class="rn-rc-l" for="rnRcBib">${esc(U.rcBib)}</label>
+        <input id="rnRcBib" class="rn-rc-in rn-rc-bib" inputmode="numeric" autocomplete="off" maxlength="6" value="${esc(store.get('myBib', '') || '')}">
+        <p class="rn-rc-l" id="rnRcWhatL">${esc(U.rcWhat)}</p>
+        <div class="lv-chips" role="radiogroup" aria-labelledby="rnRcWhatL">${RC_WHAT.map(w => `<label><input type="radio" name="rnRcWhat" value="${w[0]}">${esc(U[w[1]])}</label>`).join('')}</div>
+        <label class="rn-vh" for="rnRcNote">${esc(U.rcNote)}</label>
+        <input id="rnRcNote" class="rn-rc-in" type="text" maxlength="160" autocomplete="off" placeholder="${esc(U.rcNote)}">
+        <button type="button" class="fd-big" id="rnRcSend">${esc(U.rcSend)}</button>
+        <p class="fd-hint" id="rnRcMsg" role="status"></p>`;
+      $('rnRcSend').onclick = rcSend;
+      return;
+    }
+    const b = cur.body || {};
+    const key = ['st', viewLang(), cur.id, cur.state, cur.tries ? 1 : 0, cur.ack, cur.sent, cur.closed].join('|');
+    if (rcShown === key) return;
+    rcShown = key;
+    const lines = [];
+    if (cur.state === 'refused') lines.push(['warn', U.rcRefused]);
+    else if (cur.closed) lines.push(['', U.rcClosed]);
+    else if (cur.state === 'queued') lines.push(cur.tries ? ['warn', U.rcQueued] : ['', U.rcSending]);
+    else if (cur.state === 'ack') { lines.push(['ok', fill(U.rcAck, { time: tm(cur.ack) })]); if (cur.sent) lines.push(['ok', fill(U.rcOnWay, { time: tm(cur.sent) })]); }
+    else lines.push(['', fill(U.rcSent, { time: tm(cur.sentAt || cur.t) })]);
+    const withIt = cur.state === 'refused' ? '' : b.lat == null ? U.rcNoPos : b.rk != null ? fill(U.rcWith, { km: one(b.rk), acc: b.acc }) : fill(U.rcWithPos, { acc: b.acc });
+    body.innerHTML = lines.map(l => `<p class="lv-line ${l[0]}">${rich(l[1])}</p>`).join('') +
+      `<p class="fd-hint">${esc(b.what || '')}${b.bib ? ` · ${esc(U.rcBib)} ${esc(b.bib)}` : ''}${withIt ? '<br>' + esc(withIt) : ''}</p>
+      <button type="button" class="btn" id="rnRcNew">${esc(cur.state === 'queued' ? U.rcCancel : U.rcNew)}</button>`;
+    $('rnRcNew').onclick = () => { LV.help.clear(); rcDraw(); };
+    // A buzz when Race Control answers, wherever the phone is in the app.
+    const now = cur.id + cur.state + (cur.sent || '');
+    if (rcWas && rcWas !== now && cur.state === 'ack' && navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch (e) { }
+    rcWas = now;
+  }
+  function rcSend() {
+    const U = T(), pick = (document.querySelector('input[name=rnRcWhat]:checked') || {}).value, w = RC_WHAT.find(x => x[0] === pick);
+    const note = $('rnRcNote').value.trim().slice(0, 160), bib = $('rnRcBib').value.replace(/[^0-9A-Za-z]/g, '').slice(0, 8), out = $('rnRcMsg');
+    if (!w) { out.textContent = U.rcPick; out.classList.add('bad'); return; }
+    out.classList.remove('bad'); store.set('myBib', bib);
+    let gone = false;
+    const go = () => {
+      if (gone) return; gone = true;
+      const ok = here && here.stage === stage && Date.now() - here.t < 3 * 60e3, En = E(), off = ok && here.offM > 300;
+      // The board places a km on the courses it knows (not the 6k, 5k or 2k loops): those go as a position only.
+      const known = ok && !off && MAIN.courses && MAIN.courses.includes(En);
+      const body = { what: w[2] + (mode === 'crew' ? ' (from a crew phone)' : '') + (note ? '. ' + note : '') + (off ? ` (${dist(here.offM)} off the course)` : ''), urgent: w[3], bib, race: rlab() };
+      if (ok) Object.assign(body, { lat: +here.lat.toFixed(5), lon: +here.lon.toFixed(5), acc: Math.round(here.acc), t: here.t });
+      if (ok && here.w3w) body.w3w = here.w3w;
+      if (known) Object.assign(body, { course: En.id, km: Math.round(here.gk * 10) / 10, rk: Math.round(here.rk * 10) / 10 });
+      rcShown = ''; LV.help.send(body); rcDraw();
+    };
+    if (here && here.stage === stage && Date.now() - here.t < 60e3) return go();
+    $('rnRcSend').disabled = true; out.textContent = U.finding;
+    locate(go, go);
+  }
+  if (LV) LV.onChange(rcDraw);
   if ($('rnLang')) {
     $('rnLang').addEventListener('change', () => { store.set('lang', $('rnLang').value); flipEn = false; helpTab(); });
     $('rnLangFlip').addEventListener('click', () => { flipEn = !flipEn; helpTab(); });

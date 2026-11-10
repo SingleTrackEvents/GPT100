@@ -642,7 +642,7 @@ async function liveApi(req, env, url, c, ctx) {
     if (old) return json({ ok: true, num: old.num, again: true });
     const S = await liveState(env);
     if (!S.help.open) return json({ closed: true, error: 'Race Control isn\'t taking messages from the app right now' }, 409);
-    if (!(await allow(db, 'help:' + ip, 6, 10 * 60e3)) || !(await allow(db, 'help:all', 40, 10 * 60e3))) return json({ error: 'Too many messages. Call race medical or 000.' }, 429);
+    if (!(await allow(db, 'help:' + ip, 10, 10 * 60e3)) || !(await allow(db, 'help:all', 60, 10 * 60e3))) return json({ error: 'Too many messages. Call race medical or 000.' }, 429);
     const app = b.app === 'field' ? 'field' : 'runner', urgent = b.urgent === true;
     const lat = num(b.lat, -40, -34), lon = num(b.lon, 140, 146), km = num(b.km, 0, 300), bib = txt(b.bib, 8).replace(/[^0-9A-Za-z]/g, '');
     const what = txt(b.what, 400), name = txt(b.name, 60), from = txt(b.from, 40);

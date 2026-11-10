@@ -4,6 +4,8 @@
 //   RC_PASSWORD='the medical password' node tools/crashtest/worker-local.mjs      (listens on http://127.0.0.1:8787)
 // Then open the staff app with ?rcapi=http://127.0.0.1:8787 (Control), or any app with ?api=http://127.0.0.1:8787.
 //   GET  /__cron        run the Worker's timer once (new chip reads become alerts)
+//   GET  /__reset       forget the flood limits (a test sends more help requests than one phone may)
+//   GET  /__wipe        empty the local database (worker-test.mjs starts with this)
 //   POST /__pushsvc/x   a stand-in push service: what the Worker sends it is kept, GET /__pushlog shows it
 // The timing list and GPS files come from tools/crashtest/feeds.js (port 8766) unless TIMING_URL / GPS_HOST say otherwise.
 import http from 'node:http';
@@ -12,7 +14,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url)), PORT = +(process.env.PORT || 8787);
-const worker = (await import(pathToFileURL(join(HERE, '../refresh-worker.js')).href)).default;
+const WORKER = pathToFileURL(join(HERE, '../refresh-worker.js')).href;
+let worker = (await import(WORKER)).default;
 
 // ---------- D1, near enough: prepare / bind / first / all / run / batch over SQLite ----------
 const sql = new DatabaseSync(process.env.DB_FILE || ':memory:');
@@ -51,6 +54,12 @@ http.createServer(async (req, res) => {
   const send = (status, headers, buf) => { res.writeHead(status, headers); res.end(buf); };
   try {
     if (req.url.startsWith('/__pushsvc/')) { pushed.push({ t: Date.now(), to: req.url.slice(11), auth: req.headers.authorization || '', ttl: req.headers.ttl || '' }); return send(req.url.includes('gone') ? 410 : 201, {}, ''); }
+    if (req.url === '/__reset') { try { sql.exec('DELETE FROM rate'); } catch (e) { } return send(200, { 'Access-Control-Allow-Origin': '*' }, 'limits cleared'); }
+    if (req.url === '/__wipe') {
+      for (const t of sql.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()) { try { sql.exec('DELETE FROM "' + t.name + '"'); } catch (e) { } }
+      worker = (await import(WORKER + '?fresh=' + Date.now())).default; // and what the Worker keeps in memory between requests
+      return send(200, { 'Access-Control-Allow-Origin': '*' }, 'database emptied');
+    }
     if (req.url === '/__pushlog') return send(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }, JSON.stringify(pushed));
     if (req.url === '/__cron') { await worker.scheduled({ scheduledTime: Date.now(), cron: '* * * * *' }, env, ctx); await Promise.all(waits); return send(200, { 'Access-Control-Allow-Origin': '*' }, 'ran'); }
     const headers = new Headers(); for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);

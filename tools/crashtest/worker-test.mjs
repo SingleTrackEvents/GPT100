@@ -13,6 +13,9 @@ const call = async (path, body, o = {}) => {
 const rc = (path, body) => call(path, body, { rc: true });
 const id = () => 'T' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
 
+// A clean start: the stand-in empties its database (the real Worker has no such address).
+await fetch(W + '/__wipe').catch(() => { });
+
 // ---- Race Control needs the password
 ok('state without a password is refused', (await call('/rc/state?since=0')).s === 401);
 ok('state with a wrong password is refused', (await call('/rc/state?since=0', null, { rc: true, pw: 'nope' })).s === 401);
@@ -54,7 +57,7 @@ st = await rc('/rc/state?since=0');
 const inc2 = st.j.incidents.find(i => i.num === r.j.num);
 ok('urgent from the field app, position dropped, text kept as text', inc2 && inc2.severity === 'urgent' && inc2.lat === undefined && inc2.km === undefined && inc2.reporter === 'Field app: Sweep 2' && inc2.desc.includes('<img'), inc2);
 ok('help from another site is refused', (await call('/help', { id: id(), what: 'x' }, { origin: 'https://evil.example' })).s === 403);
-let limited = false; for (let i = 0; i < 8; i++) { r = await call('/help', { id: id(), what: 'flood ' + i }); if (r.s === 429) limited = true; }
+let limited = false; for (let i = 0; i < 12; i++) { r = await call('/help', { id: id(), what: 'flood ' + i }); if (r.s === 429) limited = true; }
 ok('a flood of help requests is limited', limited, r);
 
 // ---- notices
@@ -83,7 +86,8 @@ ok('a position is taken', r.s === 200 && r.j.ok, r);
 ok('a position without the code is refused', (await call('/field/pos', { code: 'wrong', id: dev, name: 'x', lat: -37.1, lon: 142.5 })).s === 401);
 ok('a position off the map is refused', (await call('/field/pos', { code: 'Peaks26', id: dev, name: 'x', lat: 10, lon: 10 })).s === 400);
 st = await rc('/rc/state?since=0');
-ok('the board sees the field phone', st.j.live.field.length === 1 && st.j.live.field[0].name === 'Sweep 2 <i>' && st.j.live.field[0].km === 49.5 && st.j.live.field_code === 'Peaks26', st.j.live);
+const fp = st.j.live.field.filter(f => f.id === dev);
+ok('the board sees the field phone', fp.length === 1 && fp[0].name === 'Sweep 2 <i>' && fp[0].km === 49.5 && st.j.live.field_code === 'Peaks26', st.j.live);
 
 // ---- fault reports
 r = await call('/fault', { app: 'runner', build: '104', msg: 'TypeError: En.nearW3w is not a function', src: 'https://x.example/js/runner.js?v=104', line: 182, col: 171, stack: 'at place (https://x.example/js/runner.js?v=104:182:171)', ua: 'test', page: 'runner.html?bib=1047#x' });

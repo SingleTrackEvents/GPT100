@@ -10,7 +10,8 @@
 // the app's buttons) are new and still need the interpreter check, as is w3wStored (24 October 2026, the saved
 // three words shown with no signal), and w3wNoLive, w3wStoredNoLive and the off-course lines on the map (offBy, offBack,
 // offLine, offFar, dirs; 26 October 2026), and the map's position and arrival lines and the far-off Share lines (located
-// to foundFar, also 26 October 2026). Keep this file in step with the documents.
+// to foundFar, also 26 October 2026), and the Tell Race Control lines (rcTitle to rcCancel, 10 November 2026, the message
+// a runner can send to the Control board). Keep this file in step with the documents.
 // Markup in the text: **bold**. 000, 112 and the Medical Team number become tap-to-call links. {km} {acc} {time} {send}
 // {m} {dist} {dir} {race} {len} {name} {dur} are filled in by the app.
 window.GPT_SAFETY_CARDS = {
@@ -54,6 +55,18 @@ window.GPT_SAFETY_CARDS = {
         foundFar: `Found you, {dist} from the {race} course (GPS ±{acc} m). Check the race picked at the top, then tap {send} again to send it.`,
         lostTitle: `Lost or stopping`, openMap: `Open the map`, gearTab: `Mandatory gear is on the Gear tab.`,
         summaryTitle: `In an emergency`, showEnglish: `Show in English`, backTo: `English`,
+        rcTitle: `Tell Race Control`,
+        rcIntro: `Puts your bib number, your position and a short message on the Race Control team's screen. **In an emergency call 000 first.** This does not replace a phone call.`,
+        rcBib: `Bib number`, rcWhat: `What's happening?`,
+        rcHurt: `I'm hurt or sick`, rcOther: `Another runner needs help`, rcLost: `I'm lost`, rcElse: `Something else`,
+        rcNote: `Add a few words (optional)`, rcSend: `Send to Race Control`, rcPick: `Choose what's happening first.`,
+        rcQueued: `**No signal yet.** Your message is saved and will send by itself when the phone finds signal. Keep the app open. If it's urgent, call 000.`,
+        rcSent: `**Sent at {time}.** Waiting for Race Control to answer. If it's urgent, or nobody answers in a few minutes, call 000 or the Medical Team on 1300 375 352.`,
+        rcAck: `**Race Control has your message** (answered {time}). Stay where you are, on the course, and keep warm.`,
+        rcOnWay: `Help is on the way (sent {time}).`, rcClosed: `Race Control has closed this message.`,
+        rcRefused: `Race Control can't take messages from the app right now. Call the Medical Team on 1300 375 352, or 000 in an emergency.`,
+        rcWith: `With it: km {km}, GPS ±{acc} m.`, rcWithPos: `With it: your position, GPS ±{acc} m.`, rcNoPos: `Your position couldn't be found, so the message goes without it.`,
+        rcSending: `Sending…`, rcNew: `Send another message`, rcCancel: `Cancel`,
         note: `Based on the GPT100 Emergency Card v0.5 (October 2026), which is also printed and handed out at registration.`
       },
       help: {
@@ -160,6 +173,18 @@ window.GPT_SAFETY_CARDS = {
         foundFar: `現在地を確認しました。{race}のコースから{dist}離れています（GPS誤差±{acc}m）。上で選んだレースを確認してから、もう一度「{send}」をタップして送信してください。`,
         lostTitle: `道に迷ったとき・レースをやめるとき`, openMap: `地図を開く`, gearTab: `必携装備はGearタブにあります。`,
         summaryTitle: `緊急時は`, showEnglish: `Show in English`, backTo: `日本語で表示`,
+        rcTitle: `レースコントロールに知らせる`,
+        rcIntro: `あなたのゼッケン番号、現在地、短いメッセージをレースコントロールの画面に送ります。**緊急の場合は、まず000に電話してください。** これは電話の代わりにはなりません。`,
+        rcBib: `ゼッケン番号`, rcWhat: `何が起きていますか？`,
+        rcHurt: `けが・体調不良です`, rcOther: `他のランナーが助けを必要としています`, rcLost: `道に迷いました`, rcElse: `その他`,
+        rcNote: `ひとこと追加（任意、できれば英語で）`, rcSend: `レースコントロールに送信`, rcPick: `まず、何が起きているかを選んでください。`,
+        rcQueued: `**まだ電波がありません。** メッセージは保存され、電波が入ると自動で送信されます。アプリを開いたままにしてください。緊急の場合は000に電話してください。`,
+        rcSent: `**{time}に送信しました。** レースコントロールの返事を待っています。緊急の場合、または数分たっても返事がない場合は、000またはメディカルチーム（1300 375 352）に電話してください。`,
+        rcAck: `**レースコントロールがメッセージを確認しました**（{time}）。コース上のその場所にとどまり、体を冷やさないようにしてください。`,
+        rcOnWay: `救助が向かっています（{time}に出発）。`, rcClosed: `レースコントロールがこのメッセージを終了しました。`,
+        rcRefused: `現在、レースコントロールはアプリからのメッセージを受け付けていません。メディカルチーム（1300 375 352）に電話してください。緊急の場合は000へ。`,
+        rcWith: `位置情報：{km} km地点、GPS ±{acc} m。`, rcWithPos: `位置情報：現在地、GPS ±{acc} m。`, rcNoPos: `現在地を取得できなかったため、位置情報なしのメッセージです。`,
+        rcSending: `送信中…`, rcNew: `別のメッセージを送る`, rcCancel: `取り消す`,
         note: `GPT100緊急時カード v0.5（2026年10月）に基づいています。同じカードを印刷したものを受付で配布します。`
       },
       help: {
@@ -266,6 +291,18 @@ window.GPT_SAFETY_CARDS = {
         foundFar: `已定位，你离{race}赛道有{dist}（GPS误差±{acc}米）。请先检查顶部选择的比赛，再次点按“{send}”即可发送。`,
         lostTitle: `迷路或退赛`, openMap: `打开地图`, gearTab: `强制装备清单在Gear标签页。`,
         summaryTitle: `紧急情况下`, showEnglish: `Show in English`, backTo: `显示中文`,
+        rcTitle: `通知赛事指挥中心`,
+        rcIntro: `把你的号码布号码、位置和一条简短信息发送到赛事指挥中心（Race Control）的屏幕上。**紧急情况请先拨打000。** 这不能代替电话。`,
+        rcBib: `号码布号码`, rcWhat: `发生了什么？`,
+        rcHurt: `我受伤或生病了`, rcOther: `另一名选手需要帮助`, rcLost: `我迷路了`, rcElse: `其他情况`,
+        rcNote: `补充几句（可选，尽量用英语）`, rcSend: `发送给赛事指挥中心`, rcPick: `请先选择发生了什么。`,
+        rcQueued: `**暂时没有信号。** 信息已保存，手机有信号时会自动发送。请保持应用打开。如情况紧急，请拨打000。`,
+        rcSent: `**已于{time}发送。** 正在等待赛事指挥中心回复。如情况紧急，或几分钟内无人回复，请拨打000或医疗团队电话1300 375 352。`,
+        rcAck: `**赛事指挥中心已收到你的信息**（{time}回复）。请留在赛道上的原地，注意保暖。`,
+        rcOnWay: `救援正在赶来（{time}出发）。`, rcClosed: `赛事指挥中心已关闭这条信息。`,
+        rcRefused: `赛事指挥中心目前无法接收应用发来的信息。请拨打医疗团队电话1300 375 352，紧急情况请拨打000。`,
+        rcWith: `附带位置：第{km}公里，GPS ±{acc}米。`, rcWithPos: `附带位置：你的位置，GPS ±{acc}米。`, rcNoPos: `无法获取你的位置，这条信息不含位置。`,
+        rcSending: `正在发送…`, rcNew: `再发一条信息`, rcCancel: `取消`,
         note: `基于GPT100紧急情况卡 v0.5（2026年10月）。同一张卡也会印刷并在报到时发放。`
       },
       help: {
@@ -372,6 +409,18 @@ window.GPT_SAFETY_CARDS = {
         foundFar: `Местоположение найдено: вы в {dist} от трассы {race} (GPS ±{acc} м). Проверьте забег, выбранный вверху, затем нажмите «{send}» ещё раз, чтобы отправить.`,
         lostTitle: `Заблудились или сходите с дистанции`, openMap: `Открыть карту`, gearTab: `Обязательное снаряжение: вкладка Gear.`,
         summaryTitle: `В экстренной ситуации`, showEnglish: `Show in English`, backTo: `Показать по-русски`,
+        rcTitle: `Сообщить в штаб забега`,
+        rcIntro: `Отправляет ваш стартовый номер, местоположение и короткое сообщение на экран штаба забега (Race Control). **В экстренной ситуации сначала звоните 000.** Это не заменяет телефонный звонок.`,
+        rcBib: `Стартовый номер`, rcWhat: `Что случилось?`,
+        rcHurt: `Я травмирован или мне плохо`, rcOther: `Другому бегуну нужна помощь`, rcLost: `Я заблудился`, rcElse: `Другое`,
+        rcNote: `Добавьте пару слов (необязательно, лучше по-английски)`, rcSend: `Отправить в штаб забега`, rcPick: `Сначала выберите, что случилось.`,
+        rcQueued: `**Пока нет сигнала.** Сообщение сохранено и отправится само, когда телефон найдёт сеть. Не закрывайте приложение. Если срочно, звоните 000.`,
+        rcSent: `**Отправлено в {time}.** Ждём ответа штаба забега. Если срочно или ответа нет несколько минут, звоните 000 или медицинской бригаде: 1300 375 352.`,
+        rcAck: `**Штаб забега получил ваше сообщение** (ответ в {time}). Оставайтесь на месте, на трассе, и не замерзайте.`,
+        rcOnWay: `Помощь уже в пути (выехала в {time}).`, rcClosed: `Штаб забега закрыл это сообщение.`,
+        rcRefused: `Сейчас штаб забега не принимает сообщения из приложения. Звоните медицинской бригаде: 1300 375 352, в экстренной ситуации: 000.`,
+        rcWith: `Вместе с ним: {km} км, GPS ±{acc} м.`, rcWithPos: `Вместе с ним: ваше местоположение, GPS ±{acc} м.`, rcNoPos: `Не удалось определить ваше местоположение: сообщение без него.`,
+        rcSending: `Отправляем…`, rcNew: `Отправить ещё одно сообщение`, rcCancel: `Отмена`,
         note: `По карточке GPT100 Emergency Card v0.5 (октябрь 2026). Та же карточка печатается и выдаётся при регистрации.`
       },
       help: {
@@ -478,6 +527,18 @@ window.GPT_SAFETY_CARDS = {
         foundFar: `Znaleziono cię {dist} od trasy {race} (GPS ±{acc} m). Sprawdź bieg wybrany na górze, potem stuknij „{send}” jeszcze raz, aby wysłać.`,
         lostTitle: `Zgubiony szlak lub zejście z trasy`, openMap: `Otwórz mapę`, gearTab: `Sprzęt obowiązkowy jest w zakładce Gear.`,
         summaryTitle: `W nagłej sytuacji`, showEnglish: `Show in English`, backTo: `Pokaż po polsku`,
+        rcTitle: `Powiadom centrum zawodów`,
+        rcIntro: `Wysyła Twój numer startowy, pozycję i krótką wiadomość na ekran centrum zawodów (Race Control). **W nagłym wypadku najpierw dzwoń pod 000.** To nie zastępuje rozmowy telefonicznej.`,
+        rcBib: `Numer startowy`, rcWhat: `Co się dzieje?`,
+        rcHurt: `Jestem ranny lub chory`, rcOther: `Inny biegacz potrzebuje pomocy`, rcLost: `Zgubiłem się`, rcElse: `Coś innego`,
+        rcNote: `Dodaj kilka słów (opcjonalnie, najlepiej po angielsku)`, rcSend: `Wyślij do centrum zawodów`, rcPick: `Najpierw wybierz, co się dzieje.`,
+        rcQueued: `**Na razie brak zasięgu.** Wiadomość jest zapisana i wyśle się sama, gdy telefon złapie zasięg. Nie zamykaj aplikacji. W pilnej sprawie dzwoń pod 000.`,
+        rcSent: `**Wysłano o {time}.** Czekamy na odpowiedź centrum zawodów. W pilnej sprawie lub gdy nikt nie odpowie przez kilka minut, dzwoń pod 000 lub do zespołu medycznego: 1300 375 352.`,
+        rcAck: `**Centrum zawodów ma Twoją wiadomość** (odpowiedź o {time}). Zostań na miejscu, na trasie, i nie wychładzaj się.`,
+        rcOnWay: `Pomoc jest w drodze (wysłana o {time}).`, rcClosed: `Centrum zawodów zamknęło tę wiadomość.`,
+        rcRefused: `Centrum zawodów nie przyjmuje teraz wiadomości z aplikacji. Dzwoń do zespołu medycznego: 1300 375 352, a w nagłym wypadku pod 000.`,
+        rcWith: `Razem z nią: km {km}, GPS ±{acc} m.`, rcWithPos: `Razem z nią: Twoja pozycja, GPS ±{acc} m.`, rcNoPos: `Nie udało się ustalić Twojej pozycji: wiadomość jest bez niej.`,
+        rcSending: `Wysyłanie…`, rcNew: `Wyślij kolejną wiadomość`, rcCancel: `Anuluj`,
         note: `Na podstawie karty GPT100 Emergency Card v0.5 (październik 2026). Ta sama karta jest drukowana i rozdawana przy rejestracji.`
       },
       help: {

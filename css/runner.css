@@ -189,6 +189,17 @@
 .rn-card-alert a { color: var(--tel); font-weight: 700; text-decoration: none; }
 .rn-card-alert .rn-card-steps { margin-top: 6px; }
 .rn-safety .rn-card-alert { margin-top: 12px; }
+/* Tell Race Control: the message a runner (or the field app) can put on the Control board */
+.rn-rc-intro { margin-top: 0; }
+.rn-rc-intro a, .rn-rc .lv-line a { color: var(--tel); font-weight: 700; text-decoration: none; }
+.rn-rc-l { display: block; margin: 12px 0 4px; font-weight: 700; font-size: 14px; }
+.rn-rc-in { display: block; width: 100%; min-height: 48px; padding: 0 12px; font-size: 17px; border: 2px solid var(--ink); border-radius: 10px; background: var(--input); color: var(--ink); }
+.rn-rc-bib { max-width: 150px; }
+.rn-rc .lv-chips { margin: 4px 0 10px; }
+.rn-rc .lv-chips label { min-height: 44px; font-size: 14px; }
+.rn-rc .fd-big { margin-top: 10px; font-size: 24px; }
+.rn-rc .lv-line { margin: 0 0 8px; font-size: 15px; }
+.rn-rc .btn { margin-top: 10px; }
 .rn-card .rn-gear { padding: 6px 0; }
 .rn-card .rn-gear:first-child { border-top: 0; }
 .rn-card .fd-hint .fd-linkbtn { padding: 0; }
