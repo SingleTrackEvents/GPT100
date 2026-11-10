@@ -44,9 +44,11 @@ The Medical, Control and Risk tabs behind the medical password (Control is cover
 
 ## November 2026 results
 
-About 1,100 page loads and 4,000 actions across the tests above. Found and fixed:
+About 300 page loads, 500 scripted inputs and 4,200 random actions across the tests above, on a laptop and a phone size, in light and dark. Found and fixed:
 
-- **Runner app, 6k, 5k and 2k:** ◎ (Where am I?) and Find my 3 words threw an error and showed nothing, because those courses had no stored what3words lookup. They now use the stored words of the GPT100 or 14k where they share track, and the position as numbers elsewhere.
+- **Runner app, 6k, 5k and 2k:** ◎ (Where am I?) and Find my 3 words threw an error: the map said nothing and the Help tab stayed on "Finding you…" with no words or numbers. Those courses had no stored what3words lookup, in the app since 24 October 2026, so through race weekend (confirmed on the untouched build 102). They now use the stored words of the GPT100 or 14k where they share track, and always give the position as numbers. The Call 000 and Call race medical buttons were not affected.
 - **Runner app, Track tab:** a damaged saved follow list (an object where a list was expected) stopped the whole tab from starting. Saved settings of the wrong shape are now ignored.
 
-No script injection got through from any input, link, saved setting or feed, and no feed (broken, hostile or huge) stopped an app from working.
+No script injection got through from any input, link, saved setting or feed, and no feed (broken, hostile or huge) stopped an app from working. The update from build 102 to 103 was rehearsed on one address: a phone on 102 moved to 103 on its first open with signal, and every app then worked with no signal.
+
+The timing test that goes with them (a 400 runner field on a phone-speed processor) also caught a slow-down in a change before it shipped: worth a look at redraw times after any change to how runners are drawn.
