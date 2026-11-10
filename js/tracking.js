@@ -251,13 +251,15 @@
     if (p && day != null && (p[0] + EPOCH) * 1000 < day) p = null;
     let gps = null;
     if (p) {
-      let best = null;
-      for (const E of courses) {
+      // The same fix as last time (positions are worked out again every minute, and whenever either feed updates):
+      // its place on the course is kept, not searched for again along every course point.
+      const t = (p[0] + EPOCH) * 1000, same = r.lastSnap && r.lastSnap.t === t ? r.lastSnap : null;
+      let best = same ? { E: same.E, ic: same.ic, offM: same.offM } : null;
+      if (!best) for (const E of courses) {
         const s = E.snap(p[1], p[2]);
         if (!best || s.offM < best.offM) best = { E, ic: s.ic, offM: s.offM };
         if (best.offM < 60) break;
       }
-      const t = (p[0] + EPOCH) * 1000;
       // Where the course passes close to itself (Halls Gap, the out and back to Jimmy Creek), a wobbly fix can snap
       // to the wrong pass and the km flicks back. Runners don't run backwards: if the nearest point is behind where
       // this runner was a moment ago and another pass nearby keeps them going forward, take that one.
@@ -281,7 +283,11 @@
       // Off the course for a while: fixes in a row more than 150 m from it, and over how long.
       if (best.offM > 150) {
         let n = 0, t0 = p[0];
-        for (let i = r.pts.length - 1; i >= 0 && n < 60; i--) { const q = r.pts[i]; if (q[0] > p[0]) continue; if (best.E.snap(q[1], q[2]).offM <= 150) break; n++; t0 = q[0]; }
+        if (same && same.off) { n = same.off.n; t0 = same.off.t0; }
+        else {
+          for (let i = r.pts.length - 1; i >= 0 && n < 60; i--) { const q = r.pts[i]; if (q[0] > p[0]) continue; if (best.E.snap(q[1], q[2]).offM <= 150) break; n++; t0 = q[0]; }
+          if (r.lastSnap && r.lastSnap.t === t) r.lastSnap.off = { n, t0 };
+        }
         gps.offFixes = n; gps.offMin = (p[0] - t0) / 60;
       }
     }
@@ -557,6 +563,7 @@
   // opts.extra(r) HTML of its own, opts.meHint the line before the app knows where you are; others: runners on the same spot.
   function popup(r, opts, others) {
     opts = opts || {};
+    if (!r.pos) return who(r);  // (their position went between the map being drawn and the tap)
     const p = r.pos, km = cur(r), nx = nextStop(r), ml = meLine(r, { walk: true, hint: opts.meHint });
     return `${who(r)}<br>km ${one(km)}${p.est ? ' (estimated)' : ''}${p.offM > 60 ? ', ' + dist(p.offM) + ' off the course' : ''}` +
       (nx ? ` · next <b>${esc(nx.name)}</b> in ${one(nx.toGo)} km` : '') + (ml ? '<br>' + ml : '') + `<br>${where(r)}` +
@@ -639,13 +646,16 @@
   function draw(layer, E, k0, k1, opts) {
     if (!window.L || !ready()) return;
     opts = opts || {};
-    const groups = [];
+    // Grouped through a grid of about 50 m squares, so a big field isn't compared runner against runner.
+    const groups = [], cells = new Map(), CELL = 0.0005;
     for (const r of list()) {
       const p = r.pos, km = cur(r);
       if (p.course !== E || (k0 != null && (km < k0 - 1 || km > k1 + 1))) continue;
-      const at = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon];
-      const g = groups.find(g => window.GPT.metres(g.at, at) < 40);
-      if (g) g.rs.push(r); else groups.push({ at, rs: [r] });
+      const at = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon], cx = Math.floor(at[0] / CELL), cy = Math.floor(at[1] / CELL);
+      let g = null;
+      for (let dx = -1; dx <= 1 && !g; dx++) for (let dy = -1; dy <= 1 && !g; dy++) { const L = cells.get((cx + dx) + ',' + (cy + dy)); if (L) g = L.find(g => window.GPT.metres(g.at, at) < 40) || null; }
+      if (g) g.rs.push(r);
+      else { g = { at, rs: [r] }; groups.push(g); const key = cx + ',' + cy; if (!cells.has(key)) cells.set(key, []); cells.get(key).push(g); }
     }
     for (const g of groups) {
       g.rs.sort((a, b) => (+a.bib || 0) - (+b.bib || 0));
