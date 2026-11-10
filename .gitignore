@@ -5,3 +5,6 @@
 *register*.json
 __pycache__/
 out/
+# Playwright for the crash tests (tools/crashtest/README.md): installed locally, never committed.
+node_modules/
+package-lock.json
