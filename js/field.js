@@ -225,6 +225,7 @@
     if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     if (on && window.GPTHeading) GPTHeading.start();
     if (on && navigator.geolocation) watchId = navigator.geolocation.watchPosition(gotFix, gpsError, { enableHighAccuracy: true, maximumAge: 15000 });
+    if ($('fdFollow2')) $('fdFollow2').checked = watchId != null;
     shareDraw();
   }
   // On the Where tab the message sits under the button; on the map it floats over the map for a few seconds.
@@ -837,6 +838,12 @@
   let rz = null; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (map) map.invalidateSize(); }, 200); });
   $('fdLocate').addEventListener('click', locate);
   $('fdFollow').addEventListener('change', e => follow(e.target.checked));
+  // The same switch on the Map tab, and Keep screen on (where the phone can: the map stays lit while the app is open).
+  if ($('fdFollow2')) $('fdFollow2').addEventListener('change', e => { $('fdFollow').checked = e.target.checked; follow(e.target.checked); if (e.target.checked) msg('Keep updating is on: your dot follows you and your trail is drawn.'); });
+  if (LV && LV.awake.supported && $('fdAwake')) {
+    $('fdAwakeL').hidden = false; $('fdAwake').checked = LV.awake.on();
+    $('fdAwake').addEventListener('change', e => { LV.awake.set(e.target.checked); msg(e.target.checked ? 'The screen stays on while the app is open. It uses more battery.' : 'The screen will sleep as usual.'); });
+  }
   // The km box: the picked race's km, with a comma or a point for the decimals. A bad km takes the old location
   // away (and with it the Send buttons), so it can't be sent by mistake.
   $('fdKmForm').addEventListener('submit', e => {

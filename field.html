@@ -97,6 +97,11 @@
   <!-- Map: big, kept to the picked race -->
   <div class="rn-tab fd-maptab" data-tab="map" hidden>
     <p class="fd-mapfor"><span id="fdMapFor"></span> <button type="button" class="fd-linkbtn" id="fdChangeRace">Change race</button></p>
+    <!-- Keep updating (as on the Where tab) and Keep screen on (js/live.js) -->
+    <div class="rn-mapopts lv-chips">
+      <label><input type="checkbox" id="fdFollow2">Keep updating</label>
+      <label id="fdAwakeL" hidden><input type="checkbox" id="fdAwake">Keep screen on</label>
+    </div>
     <section class="fd-card fd-mapcard">
       <div id="fdMap" aria-label="Map"></div>
       <div id="fdProf" class="fd-prof"></div>

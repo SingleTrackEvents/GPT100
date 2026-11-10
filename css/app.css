@@ -879,6 +879,8 @@ html.demo-on body.field .demo-list { bottom: calc(112px + env(safe-area-inset-bo
 .lv-alerts .fd-hint { flex: 1; min-width: 180px; margin: 0; }
 .tk-alerts, .fd-alerts { margin-top: 10px; }
 .tk-alerts .lv-line, .fd-alerts .lv-line { margin: 0; }
+.rn-mapopts { flex: none; margin: 0 2px 8px; gap: 8px; }
+.rn-mapopts label { min-height: 34px; padding: 0 12px; font-size: 13px; border-width: 1px; border-color: var(--line); background: var(--paper); }
 .lv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .lv-chips label { display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px; border: 2px solid var(--ink); border-radius: 20px; font-weight: 600; font-size: 13px; cursor: pointer; }
 .lv-chips input { position: absolute; opacity: 0; pointer-events: none; }

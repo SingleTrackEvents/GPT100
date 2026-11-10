@@ -62,6 +62,11 @@
   <!-- Map: fills the screen, with the profile pinned at the bottom -->
   <div class="rn-tab fd-maptab" data-tab="map" hidden>
     <p class="fd-mapfor"><span id="rnMapFor"></span> <button type="button" class="fd-linkbtn" id="rnChangeRace">Change race</button></p>
+    <!-- Follow me (your dot keeps up, and a buzz if you step off the course) and Keep screen on (js/live.js) -->
+    <div class="rn-mapopts lv-chips" id="rnMapOpts">
+      <label><input type="checkbox" id="rnFollowMe">Follow me</label>
+      <label id="rnAwakeL" hidden><input type="checkbox" id="rnAwake">Keep screen on</label>
+    </div>
     <section class="fd-card fd-mapcard" id="rnMapCard">
       <div id="fdMap" aria-label="Map"></div>
       <button type="button" id="rnProfBar" class="rn-profbar" aria-controls="rnProf" aria-expanded="true"><span>Elevation profile</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>

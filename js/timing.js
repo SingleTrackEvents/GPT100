@@ -388,8 +388,13 @@
     const go = () => Promise.all([load('data/races.js', () => window.GPT_RACES), load('data/splits.js', () => window.GPT_SPLITS)]).then(() => done());
     if (document.readyState === 'loading') addEventListener('DOMContentLoaded', go); else go();
   });
-  let timer = null;
+  // The whole list comes each time. With the app off screen it's fetched every five minutes instead (battery and
+  // data over a 40 hour race), and at once when the app comes back.
+  let timer = null, polled = 0;
+  const HIDDEN_S = 300;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && timer && !S.off && Date.now() - polled > EVERY * 1000) { clearTimeout(timer); timer = null; poll(); } });
   async function poll() {
+    polled = Date.now();
     try {
       await races();
       const res = await fetch(URL_, { cache: 'no-store' });
@@ -404,7 +409,7 @@
       S.ready = true; S.error = null; S.updated = Date.now();
     } catch (e) { S.error = e.message; }
     S.listeners.forEach(fn => { try { fn(); } catch (e) { } });
-    timer = setTimeout(poll, EVERY * 1000);
+    timer = setTimeout(poll, (document.hidden ? Math.max(HIDDEN_S, EVERY) : EVERY) * 1000);
   }
   if (window.GPT) poll(); else addEventListener('load', poll);
 

@@ -25,9 +25,12 @@
   if (!SRCS.length && !window.GPTTiming) { window.GPTTracking = null; return; }
   const GPS = SRCS.length > 0;
   const isUrl = x => /^https?:\/\//.test(x);
+  // The Worker that relays the feed. A rehearsal can point at a local one: ?api=http://127.0.0.1:8787 (js/live.js).
+  let WORKER = ((C.weather && C.weather.refreshUrl) || '').replace(/\/$/, '');
+  try { if (window.GPTLive && new URLSearchParams(location.search).get('api') && GPTLive.base()) WORKER = GPTLive.base(); } catch (e) { }
   const FEEDS = SRCS.map((x, i) => ({
     id: x, key: SRCS.length > 1 ? i + ':' : '',   // runner ids are per event, so keep them apart when there's more than one
-    base: isUrl(x) ? x.replace(/\/?$/, '/') : ((C.weather && C.weather.refreshUrl) || '').replace(/\/$/, '') + '/gps/' + x + '/',
+    base: isUrl(x) ? x.replace(/\/?$/, '/') : WORKER + '/gps/' + x + '/',
     relay: !isUrl(x), ready: false, live: false, name: '', interval: 15, bytes: -1, reset: -1, lastLine: 'undef', error: null, timer: null
   }));
   const BASE = GPS ? FEEDS[0].base : '';
@@ -56,7 +59,7 @@
   // tracking.gpsBibs: a tracker's bib in the GPS to the runner's bib in the timing list, where the providers number
   // a runner differently (relay teams, say). Kept by timing list bib, for the join below.
   const GPS_BIB = new Map(Object.entries(T.gpsBibs || {}).map(([g, c]) => [String(c), String(g)]));
-  const S = { ready: false, live: false, name: '', interval: 15, runners: new Map(), byBib: new Map(), allBib: new Map(), rawIds: new Map(), bytes: -1, reset: -1, lastLine: 'undef', updated: 0, error: null, listeners: [], gps: GPS };
+  const S = { ready: false, live: false, name: '', interval: 15, runners: new Map(), byBib: new Map(), allBib: new Map(), rawIds: new Map(), bytes: -1, reset: -1, lastLine: 'undef', updated: 0, error: null, listeners: [], gps: GPS, partial: false };
 
   // ---------- the GPS feed ----------
   function parseInit(F, txt) {
@@ -363,7 +366,16 @@
     if (!res.ok) throw new Error(path + ' ' + res.status);
     return res;
   }
+  // With the app off screen (the phone in a pocket, another tab in front) new positions are fetched once a minute
+  // instead of every 15 seconds, which saves battery and data over a 40 hour race. Back on screen it catches up at once.
+  const HIDDEN_S = 60;
+  const wait = F => (document.hidden ? Math.max(HIDDEN_S, F.interval) : F.interval) * 1000;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    FEEDS.forEach(F => { if (F.timer && Date.now() - (F.polled || 0) > F.interval * 1000) { clearTimeout(F.timer); F.timer = null; poll(F); } });
+  });
   async function poll(F) {
+    F.polled = Date.now();
     try {
       const q = F.bytes >= 0 ? `?offset=${F.bytes}&reset=${F.reset}` : `?data=${encodeURIComponent(F.lastLine)}`;
       const res = await get(F, 'data.php', q);
@@ -375,22 +387,42 @@
         if (txt.trim()) handleData(F, txt);
       } else { F.error = null; sum(); }
     } catch (e) { F.error = e.message; sum(); }
-    F.timer = setTimeout(() => poll(F), F.interval * 1000);
+    F.timer = setTimeout(() => poll(F), wait(F));
+  }
+  // The phone apps, through the Worker's relay, take the end of the positions file first (the last few fixes of
+  // everyone who is moving), so the map fills in seconds on a weak signal; the whole file follows in the background
+  // for the history (trails, who has stopped, trackers that went quiet earlier). S.partial says it's still to come.
+  const TAIL = 150000, PHONE = !!document.querySelector('.rn-nav');
+  async function rest(F, tries) {
+    try {
+      const res = await fetch(F.base + 'data.lst', { cache: 'no-store' });
+      if (!res.ok) throw new Error('data.lst ' + res.status);
+      const fs = res.headers.get('X-GPS-Server-Filesize'), txt = await res.text();
+      if (fs) F.bytes = Math.max(F.bytes, +fs);
+      F.partial = false; S.partial = FEEDS.some(x => x.partial);
+      const last = F.lastLine;
+      handleData(F, txt);
+      F.lastLine = last === 'undef' ? F.lastLine : last;   // the newest line stays the one the follow-up fetches count from
+    } catch (e) { if (tries < 8) setTimeout(() => rest(F, tries + 1), 60e3); }
   }
   async function start(F) {
     try {
       parseInit(F, await (await get(F, 'init.txt')).text());
       // An event set up ahead of race day has no positions file until the first tracker sends: the provider answers
       // 403 or 404. That's not an error, just nothing yet.
-      const res = await fetch(F.base + 'data.lst', { cache: 'no-store' });
+      const res = await fetch(F.base + 'data.lst' + (F.relay && PHONE ? '?tail=' + TAIL : ''), { cache: 'no-store' });
       if (!res.ok && res.status !== 403 && res.status !== 404) throw new Error('data.lst ' + res.status);
       const fs = res.ok && res.headers.get('X-GPS-Server-Filesize'); if (fs) F.bytes = +fs;
+      // "X-GPS-Tail: sent/whole" when the relay sent only the end of the file (an older Worker sends it all).
+      const tl = res.ok && /^(\d+)\/(\d+)$/.exec(res.headers.get('X-GPS-Tail') || '');
       const txt = res.ok ? await res.text() : '';
+      F.partial = !!tl && +tl[1] < +tl[2]; S.partial = FEEDS.some(x => x.partial);
       F.ready = true; F.error = null; sum();
       handleData(F, txt);
+      if (F.partial) setTimeout(() => rest(F, 0), 2500);
       // Followed for new positions while live, and also once it has any: the provider can mark an event not live while
       // its trackers still send (the 50k and stage race event on the Friday).
-      if ((F.live || F.lastLine !== 'undef') && !F.timer) F.timer = setTimeout(() => poll(F), F.interval * 1000);
+      if ((F.live || F.lastLine !== 'undef') && !F.timer) F.timer = setTimeout(() => poll(F), wait(F));
       // An event that isn't live yet (set up ahead of race day) is checked again every few minutes, so it's picked up
       // when the provider switches it on, with its competitors, without reloading the app.
       else if (!F.live) setTimeout(() => start(F), 5 * 60e3);
@@ -455,7 +487,7 @@
     const waiting = GPS && !S.live && FEEDS.every(F => F.lastLine === 'undef');  // set up at the provider, nothing sent yet
     let s = `${!GPS ? 'Timing chips only' : S.live ? 'Live tracking' : waiting ? 'GPS tracking (not started yet)' : 'Tracking (replay)'}: ${on.length} runner${on.length === 1 ? '' : 's'} on course`;
     if (GPS && TC) s += ` (${on.length - byChip} placed by GPS, ${byChip} by the chips)`;
-    if (GPS) s += `, GPS updated ${ago(Date.now() - S.updated)}${S.error ? ' (last fetch failed)' : ''}`;
+    if (GPS) s += `, GPS updated ${ago(Date.now() - S.updated)}${S.error ? ' (last fetch failed)' : ''}${S.partial ? ' (latest positions first: the earlier ones are still loading)' : ''}`;
     return s + '.' + (chipLine ? ' ' + chipLine : '') + (T.credit && T.credit.name ? ` Timing and tracking by ${T.credit.name}.` : '');
   }
   // The timing team's own pages, as small buttons beside the tracking status: their live tracking (or event) page and

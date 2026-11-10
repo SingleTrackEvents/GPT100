@@ -46,6 +46,8 @@
     document.body.classList.toggle('rn-on-map', t === 'map');
     if (t === 'map') setTimeout(() => { if (map) { map.invalidateSize(); if (needFit) { needFit = false; drawCourse(true); if (here) drawMe(); } } if (profile) profile.redraw(); }, 0);
     if (t === 'help') textLink();
+    // (With Follow me on, the three words are only looked up once the Help tab is opened.)
+    if (t === 'help' && here && !here.w3wDone && !here.w3w && Date.now() - here.t < 5 * 60e3) lookupW3w(here.lat, here.lon);
     if (t === 'home') home();
     if (t === 'help') showW3w();
     if (t === 'schedule') drawSchedule();
@@ -66,7 +68,7 @@
     drawCourse(); plan(); schedule(); home();
   }
   function setStage(S) {
-    stage = S;
+    stage = S; onCourse = false; offN = 0; offSince = 0;   // (Follow me starts afresh on another course)
     const list = stagesOf(race);
     $('rnStages').hidden = list.length < 2;
     $('rnStages').innerHTML = list.map(s => `<button type="button" data-s="${s.id}"${s === S ? ' class="on"' : ''}>${esc(s.label)}</button>`).join('');
@@ -167,7 +169,10 @@
   }
   const dist = m => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${one(m / 1000)} km`;
   // Nearest point on this race's part of the course.
-  function place(lat, lon, acc) {
+  // quiet: a fix from Follow me, which comes every few seconds: the three words aren't looked up again for each one.
+  let w3wAt = 0;
+  function place(lat, lon, acc, quiet) {
+    const was = here;
     const En = E(), P = stage.points, i0 = En.idxAtKm(P[0].gk), i1 = En.idxAtKm(P[P.length - 1].gk);
     const ds = [];
     for (let i = i0; i <= i1; i++) ds.push(En.metres([lat, lon], [En.route[i][0], En.route[i][1]]));
@@ -184,7 +189,57 @@
     // Where you are, for the Track tab and the runners on the map: a tap on a runner says how far they are from you.
     if (window.GPTTracking) GPTTracking.setMe({ lat, lon, t: now, course: En.id, km: q[2], offM: Math.round(bd) });
     render();
-    lookupW3w(lat, lon);
+    if (!quiet) { lookupW3w(lat, lon); return; }
+    // Hardly moved since the last fix: its three words still stand. Otherwise they're looked up if the Help tab is
+    // open (at most every 20 seconds), or when it's opened.
+    if (was && was.stage === stage && was.w3wDone && En.metres([was.lat, was.lon], [lat, lon]) < 5) { here.w3w = was.w3w; here.w3wDone = true; here.w3wWhy = was.w3wWhy; }
+    else if (tab === 'help' && now - w3wAt > 20e3) { w3wAt = now; lookupW3w(lat, lon); }
+    if (tab === 'help') { showW3w(); textLink(); }
+  }
+  // ---------- Follow me, and the buzz when you step off the course ----------
+  // The dot keeps up with you while the app is open (the phone stops location when the screen is off, so Keep
+  // screen on goes with it). Runners who have been on the course and then get more than 100 m from it, on two fixes
+  // at least 20 seconds apart, get a buzz, three beeps and the way back; again every two minutes until they're back.
+  const OFF_M = 100, OFF_AGAIN = 2 * 60e3;
+  let watchId = null, onCourse = false, offN = 0, offSince = 0, lastBuzz = 0, audio = null;
+  function beep(silent) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      if (silent) return;
+      [0, 0.28, 0.56].forEach(d => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = 880; o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(0.3, audio.currentTime + d); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + d + 0.2); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.22); });
+    } catch (e) { }
+  }
+  function offCheck(acc) {
+    if (mode !== 'runner' || !here) return;
+    const now = Date.now();
+    if (here.offM <= OFF_M / 2) { if (offN && lastBuzz) msg(''); onCourse = true; offN = 0; offSince = 0; return; }
+    // Further than 2 km is the wrong race picked or a drive to the start, not a wrong turn: the map says so already.
+    if (!onCourse || here.offM <= OFF_M || here.offM > 2000 || acc > 60) return;
+    offN++; if (!offSince) offSince = now;
+    if (offN < 2 || now - offSince < 20e3 || now - lastBuzz < OFF_AGAIN) return;
+    lastBuzz = now;
+    if (navigator.vibrate) try { navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) { }
+    beep();
+    msg(fill(UL('offBy'), { dist: dist(here.offM) }) + ' ' + UL('offBack'), true, true);
+  }
+  function followMe(on, quiet) {
+    store.set('followMe', !!on);
+    if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    onCourse = false; offN = 0; offSince = 0;
+    if (on && (!E() || !navigator.geolocation)) { on = false; msg(!E() ? 'Follow me needs this race\'s map, which isn\'t in the app yet.' : 'This phone can\'t share its location with the app.', true); }
+    if (on) {
+      if (window.GPTHeading) GPTHeading.start();
+      beep(true);   // (the phone only lets the app make a sound later if it was set up from a tap)
+      watchId = navigator.geolocation.watchPosition(p => {
+        const b = locBtn(); if (b) { b.classList.remove('busy'); b.classList.add('on'); }
+        if (window.GPTHeading) GPTHeading.gps(p.coords);
+        if (!E()) return;
+        place(p.coords.latitude, p.coords.longitude, p.coords.accuracy, true); offCheck(p.coords.accuracy);
+      }, e => { if (e.code === 1) { followMe(false, true); msg(UL('gpsBlocked'), true); } }, { enableHighAccuracy: true, maximumAge: 15000 });
+      if (!quiet) msg(mode === 'runner' ? 'Follow me is on. Your dot keeps up while the app is open, and the phone buzzes if you step off the course.' : 'Follow me is on. Your dot keeps up while the app is open.', false, false);
+    }
+    if ($('rnFollowMe')) $('rnFollowMe').checked = watchId != null;
   }
   // what3words: three words for your 3 m square, easy to read out to 000 or race medical. The live lookup
   // needs signal (and the key only works on the live site). Without it, the Help tab shows the stored words of
@@ -862,6 +917,16 @@
   profShow(store.get('profOpen', true) !== false);
   if (INFO.medicalPhone) { $('rnCallMed').hidden = false; $('rnCallMed').href = 'tel:' + INFO.medicalPhone.replace(/\s/g, ''); }
   $('rnW3wGet').addEventListener('click', () => { $('rnW3wMsg').textContent = T().finding; locate(); });
+  // The Map tab's switches. Follow me comes back on its own only if the phone already lets the app use location.
+  if ($('rnFollowMe')) {
+    $('rnFollowMe').addEventListener('change', e => followMe(e.target.checked));
+    if (store.get('followMe', false) && navigator.permissions && navigator.permissions.query) navigator.permissions.query({ name: 'geolocation' }).then(p => { if (p.state === 'granted' && stage && E()) followMe(true, true); }).catch(() => { });
+    const LVA = window.GPTLive && GPTLive.awake;
+    if (LVA && LVA.supported) {
+      $('rnAwakeL').hidden = false; $('rnAwake').checked = LVA.on();
+      $('rnAwake').addEventListener('change', e => { LVA.set(e.target.checked); msg(e.target.checked ? 'The screen stays on while the app is open. It uses more battery.' : 'The screen will sleep as usual.'); });
+    }
+  }
   helpTab();
   $('rnNotices').innerHTML = (INFO.notices || []).map(n => `<p class="notice">${esc(n.text)}</p>`).join('');
   if (C.tracking && C.tracking.url) { const t = $('fdTrack'); t.hidden = false; t.innerHTML = `<a class="btn" href="${esc(C.tracking.url)}" target="_blank" rel="noopener">${esc(C.tracking.label || 'Live tracking')}</a>${C.tracking.credit && C.tracking.credit.name ? ` <span class="fd-hint">by ${C.tracking.credit.url ? `<a href="${esc(C.tracking.credit.url)}" target="_blank" rel="noopener">${esc(C.tracking.credit.name)}</a>` : esc(C.tracking.credit.name)}</span>` : ''}`; }

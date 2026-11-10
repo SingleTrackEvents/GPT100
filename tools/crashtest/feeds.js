@@ -12,13 +12,16 @@ const at = km => R.reduce((a, b) => Math.abs(b[2] - km) < Math.abs(a[2] - km) ? 
 const line = (id, t, lat, lon, more) => `${id}.${t}_${Math.round(lon * 5e4)}_${Math.round(lat * 1e5)}_B90_S5${more || ''}`;
 // n runners spread along the course, each with a few fixes over the last half hour.
 function good(n, pts) {
-  let init = 'RACENAME:Crash test\nLIVE:1\nGRABINTERVAL:15\n', data = '';
+  let init = 'RACENAME:Crash test\nLIVE:1\nGRABINTERVAL:15\n';
+  const rows = [];
   for (let i = 0; i < n; i++) {
     const id = 1000 + i, km = 5 + (150 * i / n), t = now();
     init += `COMPETITOR:${id}|20261106|080000|${id} Runner ${i}|R${i}|\n`;
-    for (let k = pts; k >= 0; k--) { const p = at(km - k * 0.15); data += line(id, t - k * 120, p[0], p[1]) + '\n'; }
+    for (let k = pts; k >= 0; k--) { const p = at(km - k * 0.15); rows.push([t - k * 120, line(id, t - k * 120, p[0], p[1])]); }
   }
-  return { init, data };
+  // As the provider writes it: one line per fix as it arrives, oldest first (so the end of the file is the latest of everyone).
+  rows.sort((a, b) => a[0] - b[0]);
+  return { init, data: rows.map(r => r[1]).join('\n') + '\n' };
 }
 const hhmm = d => { const m = new Date(Date.now() + 11 * 3600e3 - d * 60e3); return String(m.getUTCHours()).padStart(2, '0') + ':' + String(m.getUTCMinutes()).padStart(2, '0') + ':00'; };
 const CASES = {
