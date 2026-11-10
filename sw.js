@@ -3,35 +3,31 @@
 // page shows new only once all its new files are in, and until then the saved page runs with its own saved files.
 // tools/bump_version.mjs moves BUILD and every ?v= in the pages together (README, Hosting).
 // Pages use the network first (so updates land), falling back to the saved copy when the network hasn't answered in a
-// few seconds (weak signal). Leaflet, fonts and map tiles are cached as they're used; the topo map can also be saved
-// whole (js/basemap.js).
-const BUILD = '102';
+// few seconds (weak signal). Leaflet and the fonts are served with the app (lib/) and saved with each build, so nothing
+// the pages need comes from another site. Map tiles are cached as they're used; the topo map can also be saved whole
+// (js/basemap.js).
+const BUILD = '103';
 const VERSION = 'gpt100-v' + BUILD;
 const NEXT = 'gpt100-next-v'; // + a newer build: files for its pages, fetched before that build's worker is in
 // Pages, manifests and icons, saved by their own address.
 const PAGES = ['./', 'index.html', 'field.html', 'runner.html', 'map.html', 'admin.html', 'manifest.webmanifest', 'manifest-field.webmanifest', 'manifest-runner.webmanifest',
-  'icons/mark.png', 'icons/logo.png', 'icons/icon-48.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+  'icons/mark.png', 'icons/logo.png', 'icons/icon-48.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
+  // Leaflet's images and the fonts (asked for by lib/leaflet.css and lib/fonts.css, by their own address).
+  'lib/images/layers.png', 'lib/images/layers-2x.png', 'lib/images/marker-icon.png', 'lib/images/marker-icon-2x.png', 'lib/images/marker-shadow.png',
+  'lib/fonts/bebas-neue-latin.woff2', 'lib/fonts/bebas-neue-latin-ext.woff2', 'lib/fonts/montserrat-latin.woff2', 'lib/fonts/montserrat-latin-ext.woff2',
+  'lib/fonts/montserrat-cyrillic.woff2', 'lib/fonts/montserrat-cyrillic-ext.woff2'];
 // Scripts and styles, saved as the pages ask for them (with ?v=BUILD).
 const FILES = [
-  'css/app.css', 'css/field.css', 'css/runner.css', 'js/engine.js', 'js/app.js', 'js/medplan.js', 'js/weather-core.js', 'js/weather.js', 'js/rc.js', 'js/risk.js', 'js/basemap.js', 'js/intro.js',
+  'lib/fonts.css', 'lib/leaflet.css', 'lib/leaflet.js', 'css/app.css', 'css/field.css', 'css/runner.css', 'js/engine.js', 'js/app.js', 'js/medplan.js', 'js/weather-core.js', 'js/weather.js', 'js/rc.js', 'js/risk.js', 'js/basemap.js', 'js/intro.js',
   'js/viewport.js', 'js/races.js', 'js/profile.js', 'js/helipads.js', 'js/track.js', 'js/timing.js', 'js/tracking.js', 'js/fullscreen.js', 'js/runners.js', 'js/demo.js', 'js/map.js', 'js/field.js', 'js/runner.js', 'js/track-tab.js', 'js/heading.js', 'js/contingency.js',
   'data/config.js', 'data/course.js', 'data/courses.js', 'data/course-w3w.js', 'data/access-edits.js', 'data/medplan.enc.js', 'data/register.enc.js', 'data/safety-officers.js', 'data/pacing.js', 'data/splits.js', 'data/contingency.js',
   'data/tiles.js', 'data/helipads.js', 'data/track-grades.js', 'data/demo-runners.js', 'data/races.js', 'data/runner-courses.js', 'data/runner-info.js', 'data/safety-cards.js'
-];
-const LIBS = [
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-  'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
-  'https://unpkg.com/leaflet@1.9.4/dist/images/layers.png',
-  'https://unpkg.com/leaflet@1.9.4/dist/images/layers-2x.png',
-  'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;500;600;700&display=swap',
-  'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;600;700&display=swap'
 ];
 const SHELL = PAGES.concat(FILES.map(u => u + '?v=' + BUILD));
 const TILES = 'gpt100-tiles';
 const OFFLINE_MAP = 'gpt100-offline-map'; // the saved topo map (js/basemap.js); kept across updates
 const WX_CACHE = 'gpt100-weather';
-const LIB = 'gpt100-lib'; // Leaflet and fonts (fixed versions); kept across updates
-const KEEP = [VERSION, TILES, OFFLINE_MAP, WX_CACHE, LIB];
+const KEEP = [VERSION, TILES, OFFLINE_MAP, WX_CACHE];  // (the old gpt100-lib cache of Leaflet and fonts from other sites goes)
 const MAX_TILES = 2500;
 const WAIT = 3500; // ms to wait for the network before answering from the cache
 const SHORT = 1000; // ... for a page while the last request got no answer
@@ -40,10 +36,8 @@ const GIVE_UP = 20000; // ms after which a request still going is dropped, so a 
 
 // The app's own files must all save, fresh from the server (not the browser's own cache), so the saved set
 // is one build. Files a page of this build already fetched under the older worker are taken from there.
-// Leaflet and fonts are saved if they can be (or kept from before), so a slow or failed download of them
-// never stops the app working offline.
 self.addEventListener('install', e => {
-  e.waitUntil(Promise.all([
+  e.waitUntil(
     caches.open(VERSION).then(async c => {
       const pre = await caches.open(NEXT + BUILD), miss = [];
       for (const u of SHELL) { const hit = await pre.match(u); if (hit) await c.put(u, hit); else miss.push(u); }
@@ -57,9 +51,7 @@ self.addEventListener('install', e => {
           throw new Error('page ' + u + ' is build ' + b);
         }
       }
-    }),
-    caches.open(LIB).then(c => Promise.all(LIBS.map(u => caches.match(u).then(hit => hit ? c.put(u, hit) : c.add(u)).catch(() => { }))))
-  ]).then(() => self.skipWaiting()));
+    }).then(() => self.skipWaiting()));
 });
 // Only this build's files stay (and any newer build's, fetched ahead), so a fallback to the cache is always one set.
 const ahead = k => k.startsWith(NEXT) && +k.slice(NEXT.length) > +BUILD;
@@ -263,16 +255,5 @@ self.addEventListener('fetch', e => {
     kept.stop = net.stop;
     e.respondWith(netFirst(e, kept, () => caches.open(WX_CACHE).then(c => c.match(key)), () => offline(504), WAIT, true));
     return;
-  }
-
-  if (/unpkg\.com|fonts\.(googleapis|gstatic)\.com/.test(url.hostname)) {
-    // Fixed versions, so a saved copy is used as it is. Otherwise the network (asked with CORS, so a failed
-    // download can be told apart and isn't saved), giving up on a stalled connection rather than hold up
-    // the page: fonts and images after WAIT, the map library after longer.
-    const lim = req.destination === 'script' || req.destination === 'style' ? 8000 : WAIT;
-    e.respondWith(caches.match(req).then(hit => hit || within(timed(req.url, { mode: 'cors', credentials: 'omit' }), lim).then(res => {
-      if (res.ok) { const copy = res.clone(); caches.open(LIB).then(c => c.put(req, copy)); }
-      return res;
-    }, () => offline(504))));
   }
 });
