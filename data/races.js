@@ -353,6 +353,7 @@ window.GPT_RACES = {
   "s4": {
    "id": "s4",
    "label": "Stage 4",
+   "crewed": false,
    "points": [
     {
      "name": "Griffin Fireline",
@@ -363,7 +364,7 @@ window.GPT_RACES = {
      "first": "2026-11-08T06:30",
      "cutoff": "2026-11-08T07:00",
      "drop": false,
-     "crew": "yes"
+     "crew": "no"
     },
     {
      "name": "Cassidys Gap Rd",
@@ -374,7 +375,7 @@ window.GPT_RACES = {
      "first": "2026-11-08T07:20",
      "cutoff": "2026-11-08T10:00",
      "drop": false,
-     "crew": "yes"
+     "crew": "no"
     },
     {
      "name": "Bainggug car park",
@@ -385,7 +386,7 @@ window.GPT_RACES = {
      "first": "2026-11-08T08:30",
      "cutoff": "2026-11-08T13:30",
      "drop": false,
-     "crew": "yes"
+     "crew": "no"
     },
     {
      "name": "Dunkeld",

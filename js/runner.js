@@ -374,7 +374,7 @@
     if (mode === 'runner' && tp != null && tgt) extra = `<p>Your target <b>${esc(tgt)}</b>: finish about <b>${when(new Date(timeAt(S, fin.km, tp)))}</b>.</p>`;
     else if (mode === 'runner') extra = '<p class="fd-hint">Add a target time on the Aid tab to see your splits.</p>';
     else if (crewLive() && crewLive().p != null && !crewLive().wrong) { const lr = crewLive(); extra = `<p><b>${esc(lr.o.name || 'Bib ' + lr.o.bib)}</b> is at km ${one(toRace(S, lr.km))}, live. Expected at the finish about <b>${when(new Date(timeAt(S, fin.km, lr.p)))}</b>.</p><p class="fd-hint">When to leave for the next crew point is on the Crew tab.</p>`; }
-    else { const sp = seenPace(); extra = sp ? `<p>Last seen at <b>${esc(P[sp.i].name)}</b> ${when(new Date(sp.at))}. Expected at the finish about <b>${when(new Date(timeAt(S, fin.km, sp.p)))}</b>.</p>${stale(sp) ? `<p class="rn-warn">${stale(sp)}</p>` : ''}` : `<p class="fd-hint">${P.filter(x => x.crew !== 'no').length} crew points. Add where your runner was last seen on the Crew tab.</p>`; }
+    else { const sp = seenPace(); extra = sp ? `<p>Last seen at <b>${esc(P[sp.i].name)}</b> ${when(new Date(sp.at))}. Expected at the finish about <b>${when(new Date(timeAt(S, fin.km, sp.p)))}</b>.</p>${stale(sp) ? `<p class="rn-warn">${stale(sp)}</p>` : ''}` : (S.crewed === false ? `<p class="fd-hint">Non-crewed: no crew access at the aid stations. Meet your runner at the finish in ${esc(fin.name)}.</p>` : `<p class="fd-hint">${P.filter(x => x.crew !== 'no').length} crew points. Add where your runner was last seen on the Crew tab.</p>`); }
     if (mode === 'runner' && whereNow && here && Date.now() - here.t < 30 * 60e3) extra += `<p class="rn-hero-now"><span class="rn-dim">Where you were at ${hm.format(new Date(here.t))}:</span><br>${whereNow}</p>`;
     $('rnHero').innerHTML = `<p class="rn-hero-race">${esc(race.label)}${race.stages.length > 1 ? ' · ' + esc(S.label) : ''}</p>
       <p class="rn-hero-count">${count}</p>
@@ -537,25 +537,34 @@
     const now = Date.now(), atKm = !crew ? null : liveR && liveR.km != null && !liveR.wrong ? toRace(S, liveR.km) : seen ? P[seen.i].km : null;
     const passed = x => atKm != null && x.km <= atKm + 0.05;
     const drivable = crew && DRV ? P.filter(canDrive) : [];
+    // The drive can start from any place in the drive table, not only this race's crew points: crews come from Halls
+    // Gap as often as from the last crew point, and on a non-crewed race the finish is the only one.
+    const places = crew && DRV ? DRV.pts.map(q => ({ name: q.names[0], lat: q.lat, lon: q.lon })) : [];
     let from = null, fromWhy = '';
     if (drivable.length) {
-      const pick = store.get('crewFrom.' + KEY(), ''), near = here && now - here.t < 30 * 60e3 ? drivable.map(x => [E().metres([here.lat, here.lon], [x.lat, x.lon]), x]).sort((u, v) => u[0] - v[0])[0] : null;
-      from = drivable.find(x => x.name === pick) || null;
+      const pick = store.get('crewFrom.' + KEY(), ''), near = here && now - here.t < 30 * 60e3 ? places.map(x => [MAIN.metres([here.lat, here.lon], [x.lat, x.lon]), x]).sort((u, v) => u[0] - v[0])[0] : null;
+      from = places.find(x => x.name === pick) || null;
       if (!from && near && near[0] < 1500) { from = near[1]; fromWhy = 'where you are'; }
-      if (!from) { from = drivable.filter(passed).pop() || drivable[0]; fromWhy = atKm != null && passed(from) ? 'the last crew point they passed' : 'the start'; }
-      const sel = $('rnCrewFrom'), opts = `<option value="">Automatic: ${esc(from && !pick ? from.name : 'where you are, or the last crew point')}</option>` + drivable.map(x => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');
+      if (!from) {
+        // Nothing to go by: the last crew point they passed, else the first one. With only one (the finish of a
+        // non-crewed race) there's no telling, and the crew is asked to pick.
+        const last = drivable.filter(passed).pop();
+        from = last || (drivable.length > 1 ? drivable[0] : null);
+        fromWhy = last ? 'the last crew point they passed' : from ? 'the start' : '';
+      }
+      const sel = $('rnCrewFrom'), opts = `<option value="">${from && !pick ? 'Automatic: ' + esc(from.name) : pick ? 'Automatic: where you are, or the last crew point' : 'Pick where you\'re driving from'}</option>` + places.map(x => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');
       if (sel.dataset.h !== opts) { sel.dataset.h = opts; sel.innerHTML = opts; }
-      sel.value = drivable.some(x => x.name === pick) ? pick : '';
+      sel.value = places.some(x => x.name === pick) ? pick : '';
     }
-    if ($('rnCrewFromRow')) $('rnCrewFromRow').hidden = !drivable.length || p == null;
     // "Leave by" for a crew point: the runner's expected time, less the drive, less a margin to park and walk in.
     const leave = (a, x, eta) => {
-      if (a && a === x && eta) return { d: { min: 0, km: 0 }, by: eta, late: false, arrive: now, here: true };   // already there
-      const d = a && a !== x ? drive(a, x) : null; if (!d || !eta) return null;
+      const same = a && drvIdx(a) >= 0 && drvIdx(a) === drvIdx(x);
+      if (same && eta) return { d: { min: 0, km: 0 }, by: eta, late: false, arrive: now, here: true };   // already there
+      const d = a && !same ? drive(a, x) : null; if (!d || !eta) return null;
       const by = eta - (d.min + AHEAD) * 60e3;
       return { d, by, late: by < now, arrive: now + d.min * 60e3 };
     };
-    let last = null, lastDrive = from, nextUp = null;
+    let last = null, lastDrive = from, nextUp = null, ask = null;
     const rows = P.map((x, i) => {
       if (crew && x.crew === 'no' && i && i < P.length - 1) return '';
       const eta = p != null && i ? timeAt(S, x.km, p) : null, prev = last; last = x;
@@ -565,6 +574,7 @@
       // The drive: to the next crew point from where the crew is, and to each later one from the crew point before it.
       let drv = '';
       if (crew && !gone && i && canDrive(x) && eta) {
+        if (!lastDrive && !nextUp && !ask) ask = { x, eta };   // the next crew point, with nowhere to drive from yet
         const L = leave(lastDrive, x, eta);
         if (L) {
           const first = !nextUp;
@@ -579,11 +589,20 @@
           ${crew && x.crew === 'shuttle' ? `<div class="rn-leg">${esc(INFO.shuttleNote || '')}</div>` : ''}${drv}${dirs}</div>
         <div class="rn-times">${gone ? '<div class="rn-eta rn-through">Through</div>' : eta ? `<div class="rn-eta">${when(new Date(eta))}</div>` : i ? '' : `<div class="rn-eta">${when(x.ft)}</div>`}${i && x.ct && !x.noCut ? `<div class="rn-cut">Cut-off ${when(x.ct)}</div>` : ''}</div></div>`;
     }).join('');
-    $('rnPlan').innerHTML = rows;
+    // A non-crewed race (Stage 4 and the GPT33k): say so above the list.
+    const fin = P[P.length - 1], solo = crew && S.crewed === false ? `<p class="notice">${esc(race.stages.length > 1 ? S.label : race.label)} is non-crewed: there's no crew access at the aid stations. You can meet your runner at the finish in ${esc(fin.name)}.</p>` : '';
+    $('rnPlan').innerHTML = solo + rows;
+    // Where the drive starts is only asked when there's a crew point still to drive to.
+    if ($('rnCrewFromRow')) $('rnCrewFromRow').hidden = !crew || !(nextUp || ask);
     // The next crew point, up top: when they're expected and when to leave.
     const nx = $('rnCrewNext');
     if (nx) {
-      nx.hidden = !crew || !nextUp;
+      nx.hidden = !crew || (!nextUp && !ask);
+      if (crew && !nextUp && ask) {
+        nx.className = 'rn-crewnext';
+        nx.innerHTML = `<p class="rn-crewnext-h">Next crew point: <b>${esc(ask.x.name)}</b></p>
+          <p>Expected there about <b>${when(new Date(ask.eta))}</b>.</p><p class="fd-hint">Pick where you're driving from, below, for the drive and when to leave.</p>`;
+      }
       if (crew && nextUp) {
         const { x, eta, L, a } = nextUp;
         nx.className = 'rn-crewnext' + (L.late ? ' late' : '');

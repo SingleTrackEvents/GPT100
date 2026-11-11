@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Drive times between the crew points of every race, for the runner app's Crew tab ("leave by").
 //   node tools/crew_drives.mjs            writes data/crew-drives.js
-// It reads the crew points from data/races.js (crew: "yes", and the start and finish of each race), places them with
+// It reads the crew points from data/races.js (crew: "yes"), places them with
 // the app's own code, and asks Valhalla (valhalla1.openstreetmap.de, OpenStreetMap roads, the same service as
 // tools/drive_routes.py) for the drive between each pair. Only the points' positions are sent. Shuttle-only points
-// are left out: nobody drives to them. The road map's times are then met in the middle with the event's own published
+// and points with no crew access are left out: nobody drives to them. The road map's times are then met in the middle with the event's own published
 // times from Halls Gap (PUBLISHED below). Run it again when an aid station moves, a crew point is added or the
 // published times change. It takes about three minutes (it asks for each drive in turn, politely).
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -29,10 +29,8 @@ const R = ctx.GPT_RACES, RX = ctx.GPTRaces;
 const pts = [];
 for (const race of R.races) for (const id of race.stages) {
   const S = RX.prepare(R.stages[id], race.course);
-  S.points.forEach((p, i) => {
-    const ends = i === 0 || i === S.points.length - 1;
-    if (p.crew !== 'yes' && !(ends && p.crew !== 'shuttle')) return;
-    if (p.lat == null) return;
+  S.points.forEach(p => {
+    if (p.crew !== 'yes' || p.lat == null) return;
     const had = pts.find(q => Math.abs(q.lat - p.lat) < 0.002 && Math.abs(q.lon - p.lon) < 0.002);
     if (had) { if (!had.names.includes(p.name)) had.names.push(p.name); } else pts.push({ names: [p.name], lat: +p.lat.toFixed(5), lon: +p.lon.toFixed(5) });
   });
