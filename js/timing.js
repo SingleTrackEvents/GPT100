@@ -14,7 +14,10 @@
   } catch (e) { }
   src = src || T.chip || '';
   if (!src) { window.GPTTiming = null; return; }
-  const URL_ = /^https?:\/\//.test(src) ? src : ((C.weather && C.weather.refreshUrl) || '').replace(/\/$/, '') + '/timing/';
+  // The Worker that relays the list. A rehearsal can point at a local one: ?api=http://127.0.0.1:8787 (js/live.js).
+  let WORKER = ((C.weather && C.weather.refreshUrl) || '').replace(/\/$/, '');
+  try { if (window.GPTLive && new URLSearchParams(location.search).get('api') && GPTLive.base()) WORKER = GPTLive.base(); } catch (e) { }
+  const URL_ = /^https?:\/\//.test(src) ? src : WORKER + '/timing/';
   // Seconds between reads of the feed: at least 15 through the relay (RaceResult caches it for 10 to 30 s); a feed read
   // straight from an address of our own (the demo, a rehearsal folder) can go faster.
   const EVERY = Math.max(/^https?:\/\//.test(src) ? 2 : 15, +T.chipEvery || 30);
@@ -190,8 +193,13 @@
     if (/^(status|state|statusname)$/.test(n)) return 'status';
     if (/^(place|rank|pos|position|overall|overallplace|overallrank)$/.test(n)) return 'place';
     if (/^(gender|sex)$/.test(n)) return 'gender';
+    // The runner's age category, for telling runners apart on the course ("the bloke in his sixties"): an age group
+    // column as it is, or an age or a year of birth, which the app only ever shows as the event's age group.
+    if (/^(agegroup\d?|agegrp|agegroup\d?name(short)?|agecategory|agecat|ageclass|agedivision|ag\d?|division|div)$/.test(n)) return 'agegroup';
+    if (/^(age|raceage|ageonraceday|ageonday)$/.test(n)) return 'age';
+    if (/^(yob|yearofbirth|birthyear|dob|dateofbirth|birthdate|birthday|born)$/.test(n)) return 'born';
     // Not timing points: elapsed race time and gaps (Time, Diff), and the runner's details.
-    if (/^(time|nettime|chiptime|guntime|racetime|elapsed|elapsedtime|totaltime|duration|pace|speed|diff|difference|behind|gaptoleader|age|agegroup|agegrp|club|team|city|nation|nationality|country|id|pid|rrid|email|phone|comment)$/.test(n) || /(rank|place|diff|behind)$/.test(n)) return 'skip';
+    if (/^(time|nettime|chiptime|guntime|racetime|elapsed|elapsedtime|totaltime|duration|pace|speed|diff|difference|behind|gaptoleader|club|team|city|nation|nationality|country|id|pid|rrid|email|phone|comment)$/.test(n) || /(rank|place|diff|behind)$/.test(n)) return 'skip';
     return 'point';
   }
   // A time from the feed: a full date and time or a Unix time ({ t }, in ms), or a Melbourne time of day ({ sec }):
@@ -221,6 +229,41 @@
     return t > now + 10 * 60e3 ? t - 86400e3 : t;
   }
   const when = (v, now) => { const c = clock(v); return !c ? 0 : c.t || recent(c.sec, now); };
+  // ---------- age category ----------
+  // The event's age groups (gpt100.com.au/age-groups: Youth to 23, Open 24 to 39, Masters 40 to 49, 50 to 59, 60 to 69,
+  // Legends 70 and over, by age on race day); tracking.ageGroups overrides, as [from, to, name] rows. Whatever the list
+  // holds (a group's name, "M40-49", an age or a year of birth), the apps show only the group's ages: "40 to 49".
+  const AGE_GROUPS = (Array.isArray(T.ageGroups) && T.ageGroups.length ? T.ageGroups : [[0, 23, 'Youth'], [24, 39, 'Open'], [40, 49, 'Masters'], [50, 59, ''], [60, 69, ''], [70, 150, 'Legends']])
+    .map(g => ({ lo: +g[0], hi: +g[1], name: String(g[2] || '') })).sort((a, b) => a.lo - b.lo);
+  const groupText = g => g.hi >= 120 ? g.lo + ' and over' : g.lo <= 0 ? 'under ' + (g.hi + 1) : g.lo + ' to ' + g.hi;
+  const groupOfAge = a => { const g = AGE_GROUPS.find(g => a >= g.lo && a <= g.hi); return g ? groupText(g) : ''; };
+  // day: the runner's race day (ms), for an age from a date or year of birth.
+  function ageCat(group, age, born, day) {
+    const g = String(group == null ? '' : group).trim();
+    if (g) {
+      const low = g.toLowerCase();
+      const named = AGE_GROUPS.find(x => x.name && new RegExp('\\b' + x.name.toLowerCase().replace(/s$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + 's?\\b').test(low));
+      if (named) return groupText(named);
+      // "M40-49", "F 50 to 59", "Male 60–69", "70+", "U24", "Under 24": the ages, without the gender in front.
+      let m = low.match(/(\d{1,3})\s*(?:-|–|—|to)\s*(\d{1,3})/);
+      if (m && +m[1] < +m[2] && +m[2] < 130) { const hit = AGE_GROUPS.find(x => x.lo === +m[1] && x.hi === +m[2]); return hit ? groupText(hit) : m[1] + ' to ' + m[2]; }
+      if ((m = low.match(/(\d{2,3})\s*(?:\+|plus|and over|& over|and up)/))) { const hit = AGE_GROUPS.find(x => x.lo === +m[1] && x.hi >= 120); return hit ? groupText(hit) : m[1] + ' and over'; }
+      if ((m = low.match(/(?:^|\b)(?:u|under)\s*(\d{1,3})\b/))) { const hit = AGE_GROUPS.find(x => x.lo <= 0 && x.hi === +m[1] - 1); return hit ? groupText(hit) : 'under ' + m[1]; }
+      // Any other name that is plainly an age group is shown as it is; "Solo" or "Pairs" in a Division column isn't one.
+      if (/\b(junior|youth|senior|veteran|vet|master|masters|super ?vet|legend|legends|open)\b/.test(low) && g.length <= 24) return g;
+    }
+    const a = String(age == null ? '' : age).trim();
+    if (/^\d{1,3}$/.test(a) && +a > 0 && +a < 120) return groupOfAge(+a);
+    const b = String(born == null ? '' : born).trim(), ref = new Date((day || Date.now()) + MEL);
+    let m, y = 0, mo = 0, d = 0;
+    if ((m = b.match(/^(\d{4})-(\d\d)-(\d\d)/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+    else if ((m = b.match(/^(\d\d?)[./](\d\d?)[./](\d{4})$/))) { y = +m[3]; mo = +m[2]; d = +m[1]; }
+    else if (/^(19|20)\d\d$/.test(b)) y = +b;
+    if (!y) return '';
+    let yrs = ref.getUTCFullYear() - y;
+    if (mo && (ref.getUTCMonth() + 1 < mo || (ref.getUTCMonth() + 1 === mo && ref.getUTCDate() < d))) yrs--;
+    return yrs > 0 && yrs < 120 ? groupOfAge(yrs) : '';
+  }
   // A runner's status: DNF, DNS, DSQ, OTL (cut off) or finished; '' running; null for a value it doesn't know.
   function statusOf(v) {
     const s = String(v == null ? '' : v).trim().toLowerCase();
@@ -239,7 +282,7 @@
     const runners = new Map(), pts = new Map(), unmatched = new Set(), matched = new Set(), badContests = new Map(), odd = new Set(), tests = new Set(), future = [], prevStage = new Map();
     let undated = 0;
     for (const row of rows) {
-      let bib = '', name = '', first = '', last = '', contest = '', cp = -1, status = '', place = '', gender = '', m;
+      let bib = '', name = '', first = '', last = '', contest = '', cp = -1, status = '', place = '', gender = '', agegroup = '', age = '', born = '', cat0 = '', m;
       const reads = [];
       for (const [l, v] of Object.entries(row)) {
         const ro = role(l), sv = String(v == null ? '' : v).trim();
@@ -247,7 +290,10 @@
         else if (ro === 'name') name = sv;
         else if (ro === 'first') first = sv;
         else if (ro === 'last') last = sv;
-        else if ((m = /^contest(\d)$/.exec(ro))) { if (sv && +m[1] > cp) { contest = sv; cp = +m[1]; } }
+        else if ((m = /^contest(\d)$/.exec(ro))) { if (sv && +m[1] > cp) { contest = sv; cp = +m[1]; } if (sv && m[1] === '0') cat0 = sv; }
+        else if (ro === 'agegroup') agegroup = agegroup || sv;
+        else if (ro === 'age') age = sv;
+        else if (ro === 'born') born = sv;
         else if (ro === 'status') status = sv;
         else if (ro === 'place') place = sv;
         else if (ro === 'gender') gender = sv;
@@ -314,7 +360,9 @@
       if (!st && /[a-z]/i.test(place)) { st = statusOf(place); if (st == null) { odd.add(place); st = ''; } }
       const fin = finishKm(E, race);
       if (!st && out.length && out[out.length - 1].km >= fin - 0.05 && fin > 0) st = 'finished';
-      runners.set(bib, { bib, name: name + ' (' + ct.label + ')', person: name, gender: /^(f|w)/i.test(gender) ? 'F' : /^m/i.test(gender) ? 'M' : gender ? 'X' : '', contest: ct.name, raceKey: ct.key, raceLabel: ct.label, course: E, race, day: ct.day, status: st, reads: out, last: out[out.length - 1] || null, startKm: startKm(E, race), finishKm: fin });
+      // A Category column beside a Contest column holds the age category, not the race.
+      if (!agegroup && cat0 && cp > 0) agegroup = cat0;
+      runners.set(bib, { bib, name: name + ' (' + ct.label + ')', person: name, gender: /^(f|w)/i.test(gender) ? 'F' : /^m/i.test(gender) ? 'M' : gender ? 'X' : '', age: ageCat(agegroup, age, born, ct.day), contest: ct.name, raceKey: ct.key, raceLabel: ct.label, course: E, race, day: ct.day, status: st, reads: out, last: out[out.length - 1] || null, startKm: startKm(E, race), finishKm: fin });
     }
     S.runners = runners;
     S.points = [...pts.values()].sort((a, b) => a.course.id === b.course.id ? a.km - b.km : a.course.main ? -1 : 1);
@@ -343,8 +391,13 @@
     const go = () => Promise.all([load('data/races.js', () => window.GPT_RACES), load('data/splits.js', () => window.GPT_SPLITS)]).then(() => done());
     if (document.readyState === 'loading') addEventListener('DOMContentLoaded', go); else go();
   });
-  let timer = null;
+  // The whole list comes each time. With the app off screen it's fetched every five minutes instead (battery and
+  // data over a 40 hour race), and at once when the app comes back.
+  let timer = null, polled = 0;
+  const HIDDEN_S = 300;
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && timer && !S.off && Date.now() - polled > EVERY * 1000) { clearTimeout(timer); timer = null; poll(); } });
   async function poll() {
+    polled = Date.now();
     try {
       await races();
       const res = await fetch(URL_, { cache: 'no-store' });
@@ -359,7 +412,7 @@
       S.ready = true; S.error = null; S.updated = Date.now();
     } catch (e) { S.error = e.message; }
     S.listeners.forEach(fn => { try { fn(); } catch (e) { } });
-    timer = setTimeout(poll, EVERY * 1000);
+    timer = setTimeout(poll, (document.hidden ? Math.max(HIDDEN_S, EVERY) : EVERY) * 1000);
   }
   if (window.GPT) poll(); else addEventListener('load', poll);
 
@@ -385,5 +438,5 @@
       (S.undated ? `. The race start days didn't load, so times of day are taken as the latest such time` : '') + '.';
   }
   function onUpdate(fn) { S.listeners.push(fn); if (S.ready || S.off) fn(); }
-  window.GPTTiming = { state: S, ready: () => S.ready, on: () => !S.off, byBib, runners: () => [...S.runners.values()], points: () => S.points, pointsAfter, status, onUpdate, hm, when, clock, keyOf, contestOf, score, norm };
+  window.GPTTiming = { state: S, ready: () => S.ready, on: () => !S.off, byBib, runners: () => [...S.runners.values()], points: () => S.points, pointsAfter, status, onUpdate, hm, when, clock, keyOf, contestOf, score, norm, ageCat };
 })();

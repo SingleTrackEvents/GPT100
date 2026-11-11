@@ -40,6 +40,10 @@ Open the app on a device where the Medical tab is unlocked, go to **Control**, a
 
 The Risk tab uses the same database and password. If the Worker was set up before the Risk tab, do step 1 again (paste in the latest `refresh-worker.js` and Deploy); nothing else changes, and the Worker adds its table itself. Until then the Risk tab says the Worker needs the latest code, and keeps assessments on the device.
 
+## The Phones panel
+
+From build 104 the board can send notices to the apps, take help requests from them and show field phones on its map. That needs the latest `refresh-worker.js` (step 1 again) and one more timer for alerts. See [LIVE.md](LIVE.md).
+
 ## When the medical password changes
 
 Update `RC_PASSWORD` in the Worker to the new password at the same time, so devices keep syncing, and re-run `tools/import_register.mjs` with the new password (see the README).

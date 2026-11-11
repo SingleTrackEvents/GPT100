@@ -28,7 +28,16 @@
       id: def.id, name: def.name, main: false, route, metres: MAIN.metres, idxAtKm,
       AID: def.stops.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, trail_km: s.km, kind: s.kind })),
       climb: (a, b) => a <= b ? asc[b] - asc[a] : desc[a] - desc[b],
-      snap(lat, lon) { let bi = 0, bd = Infinity; route.forEach((p, i) => { const d = MAIN.metres([lat, lon], [p[0], p[1]]); if (d < bd) { bd = d; bi = i; } }); return { ic: bi, offM: Math.round(bd) }; }
+      snap(lat, lon) { let bi = 0, bd = Infinity; route.forEach((p, i) => { const d = MAIN.metres([lat, lon], [p[0], p[1]]); if (d < bd) { bd = d; bi = i; } }); return { ic: bi, offM: Math.round(bd) }; },
+      // These courses have no stored what3words of their own. Where they share track with the GPT100 or the 14k (around
+      // Halls Gap and Dunkeld), the stored words of the nearest point of those stand in; elsewhere there are none, and
+      // the apps give the position as numbers. (Without this the runner app's ◎ and Find my 3 words threw an error
+      // for the 6k, 5k and 2k: found by the November 2026 crash test.)
+      nearW3w(lat, lon, maxM) {
+        let best = null;
+        (MAIN.courses || [MAIN]).forEach(C => { const w = C.nearW3w && C.nearW3w(lat, lon, maxM); if (w && (!best || w.m < best.m)) best = w; });
+        return best;
+      }
     };
     E.courses = [E];
     return E;
@@ -164,8 +173,23 @@
     return L;
   };
 
+  // The race's own skyline, for the foot of the Home card: its elevation profile from start to finish as a ridge line
+  // (the peaks the race is named for), drawn from the course line. '' for a race without a map.
+  const ridge = stage => {
+    if (stage.ridge != null) return stage.ridge;
+    const E = engineFor(stage), P = stage.points;
+    stage.ridge = '';
+    if (!E || !E.route || P[0].gk == null) return '';
+    const i0 = E.idxAtKm(P[0].gk), i1 = E.idxAtKm(P[P.length - 1].gk), n = 160, W = 640, H = 58, hs = [];
+    if (i1 - i0 < 8) return '';
+    for (let k = 0; k <= n; k++) hs.push(E.route[Math.round(i0 + (i1 - i0) * k / n)][3]);
+    const lo = Math.min(...hs), hi = Math.max(...hs), y = e => (H - 6 - (H - 12) * (e - lo) / ((hi - lo) || 1)).toFixed(1);
+    const line = hs.map((e, k) => (k ? 'L' : 'M') + (W * k / n).toFixed(1) + ',' + y(e)).join('');
+    return stage.ridge = `<svg class="rn-hero-ridge" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path class="fill" d="${line}L${W},${H}L0,${H}Z"/><path class="line" d="${line}"/></svg>`;
+  };
+
   const stagesOf = r => r.stages.map(id => prepare(R.stages[id], r.course));
   // A stage race opens on today's stage (or the next one).
   const currentStage = (r, now) => { const list = stagesOf(r); return list.find(s => s.points[s.points.length - 1].ct.getTime() > (now || Date.now())) || list[0]; };
-  window.GPTRaces = { R, mel, fmt, hm, when, dur, words, engineFor, prepare, stagesOf, currentStage, toRace, toCourse, timeAt, interpKm, paceAt, livePace, liveEta };
+  window.GPTRaces = { R, mel, fmt, hm, when, dur, words, engineFor, prepare, stagesOf, currentStage, toRace, toCourse, timeAt, interpKm, paceAt, livePace, liveEta, ridge };
 })();

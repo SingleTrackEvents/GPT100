@@ -96,9 +96,11 @@
   const DEFAULT_H = 52; // Sat 09:00, a busy moment, when outside the event window
   function curH() { return pick != null ? pick : (inEvent() ? liveH() : DEFAULT_H); }
   const isLive = () => pick == null && inEvent();
+  // (One formatter, kept: making one for every time on the plan took a noticeable part of the staff app's start-up.)
+  const FMT_H = new Intl.DateTimeFormat('en-AU', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
   function fmtH(h) {
     const d = new Date(T0.getTime() + h * 3600e3);
-    return d.toLocaleString('en-AU', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+    return FMT_H.format(d);
   }
   const timeOnly = h => fmtH(h).slice(4);
   const on = (x, h) => x.a <= h && x.z > h;

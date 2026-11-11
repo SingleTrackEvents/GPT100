@@ -7,8 +7,8 @@
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const one = x => (Math.round(x * 10) / 10).toFixed(1);
-  // A stored null, or the wrong type (a corrupt or hand-edited value), gives the default.
-  const store = { get(k, d) { try { const v = localStorage.getItem('rn.' + k), p = v == null ? null : JSON.parse(v); return p == null || (d && typeof d === 'object' && typeof p !== 'object') ? d : p; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('rn.' + k, JSON.stringify(v)); } catch (e) { } } };
+  // A stored null, or the wrong type (a corrupt or hand-edited value: text for a list, a list for a set of ticks), gives the default.
+  const store = { get(k, d) { try { const v = localStorage.getItem('rn.' + k), p = v == null ? null : JSON.parse(v); return p == null || (d && typeof d === 'object' && (typeof p !== 'object' || Array.isArray(d) !== Array.isArray(p))) ? d : p; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem('rn.' + k, JSON.stringify(v)); } catch (e) { } } };
 
   // Races, cut-offs and expected times (js/races.js, shared with the field app).
   const { mel, fmt, hm, when, dur, engineFor, prepare, toRace, toCourse, timeAt, interpKm, paceAt, liveEta } = window.GPTRaces;
@@ -46,6 +46,8 @@
     document.body.classList.toggle('rn-on-map', t === 'map');
     if (t === 'map') setTimeout(() => { if (map) { map.invalidateSize(); if (needFit) { needFit = false; drawCourse(true); if (here) drawMe(); } } if (profile) profile.redraw(); }, 0);
     if (t === 'help') textLink();
+    // (With Follow me on, the three words are only looked up once the Help tab is opened.)
+    if (t === 'help' && here && !here.w3wDone && !here.w3w && Date.now() - here.t < 5 * 60e3) lookupW3w(here.lat, here.lon);
     if (t === 'home') home();
     if (t === 'help') showW3w();
     if (t === 'schedule') drawSchedule();
@@ -66,7 +68,7 @@
     drawCourse(); plan(); schedule(); home();
   }
   function setStage(S) {
-    stage = S;
+    stage = S; onCourse = false; offN = 0; offSince = 0;   // (Follow me starts afresh on another course)
     const list = stagesOf(race);
     $('rnStages').hidden = list.length < 2;
     $('rnStages').innerHTML = list.map(s => `<button type="button" data-s="${s.id}"${s === S ? ' class="on"' : ''}>${esc(s.label)}</button>`).join('');
@@ -147,14 +149,15 @@
   const rlab = () => race.short + (race.stages.length > 1 ? ' ' + stage.label : '');
   const locBtn = () => document.querySelector('.rn-locbtn');
   // GPS fix; then() runs once you're placed (the Help tab's Share uses it too).
-  function locate(then) {
-    if (!E()) { msg('Where am I? needs this race\'s map, which isn\'t in the app yet.', true); return; }
-    if (!navigator.geolocation) { msg('This phone can\'t share its location with the app.', true); return; }
+  // bad() runs instead if no fix comes (Tell Race Control still sends, without a position).
+  function locate(then, bad) {
+    if (!E()) { msg('Where am I? needs this race\'s map, which isn\'t in the app yet.', true); bad && bad(); return; }
+    if (!navigator.geolocation) { msg('This phone can\'t share its location with the app.', true); bad && bad(); return; }
     if (window.GPTHeading) GPTHeading.start(); // the compass, for the arrow on your dot (asked from this tap)
     msg(UL('finding'), false, true);
     const b = locBtn(); if (b) b.classList.add('busy');
     // Some phones never answer at all: give up after 30 s (a late fix still places you).
-    const fail = e => { clearTimeout(wait); if (b) b.classList.remove('busy'); msg(UL(e.code === 1 ? 'gpsBlocked' : 'gpsNone'), true); $('rnShareMsg').textContent = T()[e.code === 1 ? 'gpsBlocked' : 'gpsNone']; $('rnW3wMsg').textContent = $('rnShareMsg').textContent; };
+    const fail = e => { clearTimeout(wait); if (b) b.classList.remove('busy'); msg(UL(e.code === 1 ? 'gpsBlocked' : 'gpsNone'), true); $('rnShareMsg').textContent = T()[e.code === 1 ? 'gpsBlocked' : 'gpsNone']; $('rnW3wMsg').textContent = $('rnShareMsg').textContent; bad && bad(e); };
     const wait = setTimeout(() => fail({ code: 3 }), 30000);
     navigator.geolocation.getCurrentPosition(p => { clearTimeout(wait); if (b) { b.classList.remove('busy'); b.classList.add('on'); } msg(fill(UL('located'), { acc: Math.round(p.coords.accuracy) })); if (window.GPTHeading) GPTHeading.gps(p.coords); if ($('rnProf').hidden) profShow(true); place(p.coords.latitude, p.coords.longitude, p.coords.accuracy); then && then(); },
       fail, { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 });
@@ -166,7 +169,10 @@
   }
   const dist = m => m < 1000 ? `${Math.round(m / 10) * 10} m` : `${one(m / 1000)} km`;
   // Nearest point on this race's part of the course.
-  function place(lat, lon, acc) {
+  // quiet: a fix from Follow me, which comes every few seconds: the three words aren't looked up again for each one.
+  let w3wAt = 0;
+  function place(lat, lon, acc, quiet) {
+    const was = here;
     const En = E(), P = stage.points, i0 = En.idxAtKm(P[0].gk), i1 = En.idxAtKm(P[P.length - 1].gk);
     const ds = [];
     for (let i = i0; i <= i1; i++) ds.push(En.metres([lat, lon], [En.route[i][0], En.route[i][1]]));
@@ -179,9 +185,61 @@
     const bi = cands.reduce((a, b) => Math.abs(En.route[b][2] - expect) < Math.abs(En.route[a][2] - expect) ? b : a, cands[0]);
     const q = En.route[bi];
     // near: the stored words of the nearest course point (data/course-w3w.js), for when there's no signal.
-    here = { stage, t: now, lat, lon, acc, ic: bi, gk: q[2], rk: Math.max(0, toRace(stage, q[2])), ele: q[3], offM: Math.round(bd), cp: [q[0], q[1]], w3w: null, near: En.nearW3w(lat, lon), w3wDone: false };
+    here = { stage, t: now, lat, lon, acc, ic: bi, gk: q[2], rk: Math.max(0, toRace(stage, q[2])), ele: q[3], offM: Math.round(bd), cp: [q[0], q[1]], w3w: null, near: En.nearW3w ? En.nearW3w(lat, lon) : null, w3wDone: false };
+    // Where you are, for the Track tab and the runners on the map: a tap on a runner says how far they are from you.
+    if (window.GPTTracking) GPTTracking.setMe({ lat, lon, t: now, course: En.id, km: q[2], offM: Math.round(bd) });
     render();
-    lookupW3w(lat, lon);
+    if (!quiet) { lookupW3w(lat, lon); return; }
+    // Hardly moved since the last fix: its three words still stand. Otherwise they're looked up if the Help tab is
+    // open (at most every 20 seconds), or when it's opened.
+    if (was && was.stage === stage && was.w3wDone && En.metres([was.lat, was.lon], [lat, lon]) < 5) { here.w3w = was.w3w; here.w3wDone = true; here.w3wWhy = was.w3wWhy; }
+    else if (tab === 'help' && now - w3wAt > 20e3) { w3wAt = now; lookupW3w(lat, lon); }
+    if (tab === 'help') { showW3w(); textLink(); }
+  }
+  // ---------- Follow me, and the buzz when you step off the course ----------
+  // The dot keeps up with you while the app is open (the phone stops location when the screen is off, so Keep
+  // screen on goes with it). Runners who have been on the course and then get more than 100 m from it, on two fixes
+  // at least 20 seconds apart, get a buzz, three beeps and the way back; again every two minutes until they're back.
+  const OFF_M = 100, OFF_AGAIN = 2 * 60e3;
+  let watchId = null, onCourse = false, offN = 0, offSince = 0, lastBuzz = 0, audio = null;
+  function beep(silent) {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      if (silent) return;
+      [0, 0.28, 0.56].forEach(d => { const o = audio.createOscillator(), g = audio.createGain(); o.frequency.value = 880; o.connect(g); g.connect(audio.destination); g.gain.setValueAtTime(0.3, audio.currentTime + d); g.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + d + 0.2); o.start(audio.currentTime + d); o.stop(audio.currentTime + d + 0.22); });
+    } catch (e) { }
+  }
+  function offCheck(acc) {
+    if (mode !== 'runner' || !here) return;
+    const now = Date.now();
+    if (here.offM <= OFF_M / 2) { if (offN && lastBuzz) msg(''); onCourse = true; offN = 0; offSince = 0; return; }
+    // Further than 2 km is the wrong race picked or a drive to the start, not a wrong turn: the map says so already.
+    if (!onCourse || here.offM <= OFF_M || here.offM > 2000 || acc > 60) return;
+    offN++; if (!offSince) offSince = now;
+    if (offN < 2 || now - offSince < 20e3 || now - lastBuzz < OFF_AGAIN) return;
+    lastBuzz = now;
+    if (navigator.vibrate) try { navigator.vibrate([400, 150, 400, 150, 400]); } catch (e) { }
+    beep();
+    msg(fill(UL('offBy'), { dist: dist(here.offM) }) + ' ' + UL('offBack'), true, true);
+  }
+  function followMe(on, quiet) {
+    store.set('followMe', !!on);
+    if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    onCourse = false; offN = 0; offSince = 0;
+    if (on && (!E() || !navigator.geolocation)) { on = false; msg(!E() ? 'Follow me needs this race\'s map, which isn\'t in the app yet.' : 'This phone can\'t share its location with the app.', true); }
+    if (on) {
+      if (window.GPTHeading) GPTHeading.start();
+      if (!quiet) beep(true);   // (the phone only lets the app make a sound later if it was set up from a tap)
+      watchId = navigator.geolocation.watchPosition(p => {
+        const b = locBtn(); if (b) { b.classList.remove('busy'); b.classList.add('on'); }
+        if (window.GPTHeading) GPTHeading.gps(p.coords);
+        if (!E()) return;
+        place(p.coords.latitude, p.coords.longitude, p.coords.accuracy, true); offCheck(p.coords.accuracy);
+      }, e => { if (e.code === 1) { followMe(false, true); msg(UL('gpsBlocked'), true); } }, { enableHighAccuracy: true, maximumAge: 15000 });
+      if (!quiet) msg(mode === 'runner' ? 'Follow me is on. Your dot keeps up while the app is open, and the phone buzzes if you step off the course.' : 'Follow me is on. Your dot keeps up while the app is open.', false, false);
+    }
+    if ($('rnFollowMe')) $('rnFollowMe').checked = watchId != null;
   }
   // what3words: three words for your 3 m square, easy to read out to 000 or race medical. The live lookup
   // needs signal (and the key only works on the live site). Without it, the Help tab shows the stored words of
@@ -315,12 +373,13 @@
     let extra = '';
     if (mode === 'runner' && tp != null && tgt) extra = `<p>Your target <b>${esc(tgt)}</b>: finish about <b>${when(new Date(timeAt(S, fin.km, tp)))}</b>.</p>`;
     else if (mode === 'runner') extra = '<p class="fd-hint">Add a target time on the Aid tab to see your splits.</p>';
+    else if (crewLive() && crewLive().p != null && !crewLive().wrong) { const lr = crewLive(); extra = `<p><b>${esc(lr.o.name || 'Bib ' + lr.o.bib)}</b> is at km ${one(toRace(S, lr.km))}, live. Expected at the finish about <b>${when(new Date(timeAt(S, fin.km, lr.p)))}</b>.</p><p class="fd-hint">When to leave for the next crew point is on the Crew tab.</p>`; }
     else { const sp = seenPace(); extra = sp ? `<p>Last seen at <b>${esc(P[sp.i].name)}</b> ${when(new Date(sp.at))}. Expected at the finish about <b>${when(new Date(timeAt(S, fin.km, sp.p)))}</b>.</p>${stale(sp) ? `<p class="rn-warn">${stale(sp)}</p>` : ''}` : `<p class="fd-hint">${P.filter(x => x.crew !== 'no').length} crew points. Add where your runner was last seen on the Crew tab.</p>`; }
     if (mode === 'runner' && whereNow && here && Date.now() - here.t < 30 * 60e3) extra += `<p class="rn-hero-now"><span class="rn-dim">Where you were at ${hm.format(new Date(here.t))}:</span><br>${whereNow}</p>`;
     $('rnHero').innerHTML = `<p class="rn-hero-race">${esc(race.label)}${race.stages.length > 1 ? ' · ' + esc(S.label) : ''}</p>
       <p class="rn-hero-count">${count}</p>
       <div class="rn-hero-facts"><span><b>${one(fin.km)}</b> km</span><span><b>+${nf.format(fin.up)}</b> m</span><span><b>${P.length - 2}</b> aid points</span></div>
-      <p>Start <b>${when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}`;
+      <p>Start <b>${when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}${window.GPTRaces.ridge ? window.GPTRaces.ridge(S) : ''}`;
     // Up next on the schedule for this race (and crews).
     const nxt = events().filter(e => wanted(e, race.id) && e.start > now - 20 * 60e3).slice(0, 2);
     $('rnHomeNext').innerHTML = `<h2>Up next</h2>` + (nxt.length ? nxt.map(e => `<div class="rn-now-i rn-home-i"><b>${when(new Date(e.start))}</b><span>${esc(e.what)}</span><em>${e.start <= now ? 'now' : until(e.start - now)}</em></div>`).join('') : '<p class="muted">Nothing more on the schedule.</p>') +
@@ -415,30 +474,151 @@
   }
   // A last seen more than 6 hours ago makes a shaky estimate: say so.
   const stale = sp => { const ago = Date.now() - sp.at; return ago > 6 * 3600e3 && sp.at < stage.points[stage.points.length - 1].ct.getTime() ? `That was ${dur(ago)} ago, so this estimate may be well out. Update where they were last seen.` : ''; };
+  // ---------- crew: the runner's live pace, the drive between crew points and when to leave ----------
+  // The crew's runner: one of those followed on the Track tab, picked on the Crew tab. Their pace so far then comes
+  // from the trackers and timing chips (as on their Track card), and where they were last seen is only the fallback.
+  // { o, km (course km now), p (pace, or null when it's too early to tell), wrong (their race isn't the one picked) }
+  function crewLive() {
+    const TT = window.GPTTrackTab, TRK = window.GPTTracking, bib = store.get('crewBib', '');
+    if (mode !== 'crew' || !bib || !TT || !TRK || !TRK.ready() || !TT.follow().includes(String(bib))) return null;
+    const o = TT.info(bib);
+    if (!o || !o.S) return null;
+    if (o.S.id !== stage.id) return { o, wrong: true };
+    const pos = o.r.pos, done = o.c && o.c.status;
+    if (!pos || done) return { o, done: done || '', p: null, km: null };
+    const Et = TT.etas(o);
+    return { o, km: TRK.cur(o.r), p: Et && Et.p != null ? Et.p : null, t: pos.t };
+  }
+  function crewPicker() {
+    const row = $('rnCrewBibRow'), sel = $('rnCrewBib'), TT = window.GPTTrackTab, bibs = TT ? TT.follow() : [];
+    if (!row) return;
+    row.hidden = mode !== 'crew' || !bibs.length;
+    const cur = String(store.get('crewBib', '') || '');
+    const opts = '<option value="">Not picked (use last seen)</option>' + bibs.map(b => { const o = TT.info(b); return `<option value="${esc(b)}">${esc(b)}${o && o.name ? ' ' + esc(o.name) : ''}</option>`; }).join('');
+    if (sel.dataset.h !== opts) { sel.dataset.h = opts; sel.innerHTML = opts; }
+    sel.value = bibs.includes(cur) ? cur : '';
+  }
+  // Drive minutes and km between two of this race's points, from data/crew-drives.js (null when it has no answer).
+  const DRV = window.GPT_CREW_DRIVES || null, AHEAD = 15;
+  const drvIdx = x => DRV && x && x.lat != null ? DRV.pts.findIndex(q => Math.abs(q.lat - x.lat) < 0.002 && Math.abs(q.lon - x.lon) < 0.002) : -1;
+  function drive(a, b) {
+    const i = drvIdx(a), j = drvIdx(b);
+    return i < 0 || j < 0 || DRV.min[i][j] == null ? null : { min: DRV.min[i][j], km: DRV.km[i][j] };
+  }
+  const canDrive = x => x.crew === 'yes' && drvIdx(x) >= 0;
   function plan() {
     if (!stage) return;
     const S = stage, P = S.points, crew = mode === 'crew';
-    const tp = targetPace(), tv = $('rnTarget').value.trim(), seen = crew ? seenPace() : null, p = seen ? seen.p : tp;
+    crewPicker();
+    const liveR = crew ? crewLive() : null, liveP = liveR && !liveR.wrong && liveR.p != null ? liveR.p : null;
+    const tp = targetPace(), tv = $('rnTarget').value.trim(), seen = crew && liveP == null ? seenPace() : null, p = liveP != null ? liveP : seen ? seen.p : tp;
     const note = p == null ? '' : p < -0.05 ? 'Faster than our first-runner estimate.' : p > 1 ? 'Slower than the cut-offs allow.' : '';
+    // What the times below go by, when a runner is picked.
+    const lv = $('rnCrewLive');
+    if (lv) {
+      const nm = liveR ? esc(liveR.o.name || 'Bib ' + liveR.o.bib) : '';
+      lv.hidden = !liveR;
+      lv.classList.toggle('rn-warn', !!liveR && !!liveR.wrong);
+      lv.innerHTML = !liveR ? '' : liveR.wrong ? `${nm} is in the ${esc(liveR.o.label || 'other race')}. Pick that race at the top to plan around them.`
+        : liveR.done ? `${nm}: ${liveR.done === 'finished' ? 'finished' : 'no longer racing'}. See their card on the Track tab.`
+        : liveR.km == null ? `${nm} has no position yet. Times below are from where they were last seen, or their target.`
+        : liveP == null ? `${nm} is at km ${one(toRace(S, liveR.km))}. It's too early to tell their pace: times below are from where they were last seen, or their target.`
+        : `<b>${nm}</b> is at km ${one(toRace(S, liveR.km))}, live. The times below are at the pace they've run so far.`;
+      document.querySelector('.rn-seen').hidden = liveP != null;
+    }
     // For crews going by where the runner was last seen, the note goes there, not by the target time box.
     $('rnSeenMsg').textContent = seen ? `Expected times below are from ${P[seen.i].name} at ${when(new Date(seen.at))}. ${note} ${stale(seen)}`.trim() : '';
     $('rnSeenMsg').classList.toggle('rn-warn', !!seen && (p > 1 || !!stale(seen)));
     $('rnTargetMsg').textContent = seen ? '' : tv && tp == null ? targetHint() : p == null ? 'Add a time (hours:minutes) to see when you\'d reach each one.' : note;
     $('rnTargetMsg').classList.toggle('bad', !seen && (!!tv && tp == null || p > 1));
-    let last = null;
+    // Crews: where the runner is now (live, or where they were last seen), the crew points still ahead of them, and
+    // where the crew is driving from: the point picked, else the crew point nearest their own ◎ fix, else the last
+    // crew point the runner has been through.
+    const now = Date.now(), atKm = !crew ? null : liveR && liveR.km != null && !liveR.wrong ? toRace(S, liveR.km) : seen ? P[seen.i].km : null;
+    const passed = x => atKm != null && x.km <= atKm + 0.05;
+    const drivable = crew && DRV ? P.filter(canDrive) : [];
+    let from = null, fromWhy = '';
+    if (drivable.length) {
+      const pick = store.get('crewFrom.' + KEY(), ''), near = here && now - here.t < 30 * 60e3 ? drivable.map(x => [E().metres([here.lat, here.lon], [x.lat, x.lon]), x]).sort((u, v) => u[0] - v[0])[0] : null;
+      from = drivable.find(x => x.name === pick) || null;
+      if (!from && near && near[0] < 1500) { from = near[1]; fromWhy = 'where you are'; }
+      if (!from) { from = drivable.filter(passed).pop() || drivable[0]; fromWhy = atKm != null && passed(from) ? 'the last crew point they passed' : 'the start'; }
+      const sel = $('rnCrewFrom'), opts = `<option value="">Automatic: ${esc(from && !pick ? from.name : 'where you are, or the last crew point')}</option>` + drivable.map(x => `<option value="${esc(x.name)}">${esc(x.name)}</option>`).join('');
+      if (sel.dataset.h !== opts) { sel.dataset.h = opts; sel.innerHTML = opts; }
+      sel.value = drivable.some(x => x.name === pick) ? pick : '';
+    }
+    if ($('rnCrewFromRow')) $('rnCrewFromRow').hidden = !drivable.length || p == null;
+    // "Leave by" for a crew point: the runner's expected time, less the drive, less a margin to park and walk in.
+    const leave = (a, x, eta) => {
+      if (a && a === x && eta) return { d: { min: 0, km: 0 }, by: eta, late: false, arrive: now, here: true };   // already there
+      const d = a && a !== x ? drive(a, x) : null; if (!d || !eta) return null;
+      const by = eta - (d.min + AHEAD) * 60e3;
+      return { d, by, late: by < now, arrive: now + d.min * 60e3 };
+    };
+    let last = null, lastDrive = from, nextUp = null;
     const rows = P.map((x, i) => {
       if (crew && x.crew === 'no' && i && i < P.length - 1) return '';
       const eta = p != null && i ? timeAt(S, x.km, p) : null, prev = last; last = x;
       const leg = prev ? `${one(x.km - prev.km)} km, +${x.up - prev.up} / −${x.down - prev.down} m` : '';
-      const late = eta && x.ct && !x.noCut && eta > x.ct;
+      const late = eta && x.ct && !x.noCut && eta > x.ct, gone = crew && i > 0 && passed(x);
       const dirs = crew && x.crew !== 'no' ? `<a class="rn-dir" href="https://www.google.com/maps/dir/?api=1&destination=${x.lat.toFixed(5)},${x.lon.toFixed(5)}" target="_blank" rel="noopener">Directions</a>` : '';
-      return `<div class="rn-row${late ? ' late' : ''}${seen && seen.i === i ? ' seen' : ''}">
+      // The drive: to the next crew point from where the crew is, and to each later one from the crew point before it.
+      let drv = '';
+      if (crew && !gone && i && canDrive(x) && eta) {
+        const L = leave(lastDrive, x, eta);
+        if (L) {
+          const first = !nextUp;
+          if (first) nextUp = { x, eta, L, a: lastDrive };
+          drv = L.here ? '<div class="rn-drive"><b>You\'re here.</b></div>' : `<div class="rn-drive${first && L.late ? ' late' : ''}">Drive from ${esc(lastDrive.name)}: about ${L.d.min} min (${one(L.d.km)} km). <b>${first && L.late ? 'Leave now' : 'Leave by ' + when(new Date(L.by))}</b></div>`;
+        }
+        lastDrive = x;
+      }
+      return `<div class="rn-row${late ? ' late' : ''}${seen && seen.i === i ? ' seen' : ''}${gone ? ' gone' : ''}">
         <div class="rn-km">${one(x.km)}<small>km</small></div>
         <div class="rn-main"><b>${esc(x.name)}</b><div class="rn-tags">${tags(x)}</div>${leg ? `<div class="rn-leg">${leg}</div>` : ''}
-          ${crew && x.crew === 'shuttle' ? `<div class="rn-leg">${esc(INFO.shuttleNote || '')}</div>` : ''}${dirs}</div>
-        <div class="rn-times">${eta ? `<div class="rn-eta">${when(new Date(eta))}</div>` : i ? '' : `<div class="rn-eta">${when(x.ft)}</div>`}${i && x.ct && !x.noCut ? `<div class="rn-cut">Cut-off ${when(x.ct)}</div>` : ''}</div></div>`;
+          ${crew && x.crew === 'shuttle' ? `<div class="rn-leg">${esc(INFO.shuttleNote || '')}</div>` : ''}${drv}${dirs}</div>
+        <div class="rn-times">${gone ? '<div class="rn-eta rn-through">Through</div>' : eta ? `<div class="rn-eta">${when(new Date(eta))}</div>` : i ? '' : `<div class="rn-eta">${when(x.ft)}</div>`}${i && x.ct && !x.noCut ? `<div class="rn-cut">Cut-off ${when(x.ct)}</div>` : ''}</div></div>`;
     }).join('');
     $('rnPlan').innerHTML = rows;
+    // The next crew point, up top: when they're expected and when to leave.
+    const nx = $('rnCrewNext');
+    if (nx) {
+      nx.hidden = !crew || !nextUp;
+      if (crew && nextUp) {
+        const { x, eta, L, a } = nextUp;
+        nx.className = 'rn-crewnext' + (L.late ? ' late' : '');
+        nx.innerHTML = L.here ? `<p class="rn-crewnext-h">Next crew point: <b>${esc(x.name)}</b></p>
+          <p>Expected there about <b>${when(new Date(eta))}</b>${eta > now ? `, in ${dur(eta - now)}` : ''}.</p><p class="rn-crewnext-by"><b>You're here.</b></p>`
+          : `<p class="rn-crewnext-h">Next crew point: <b>${esc(x.name)}</b></p>
+          <p>Expected there about <b>${when(new Date(eta))}</b>. The drive from ${esc(a.name)}${fromWhy && !store.get('crewFrom.' + KEY(), '') ? ` (${fromWhy})` : ''} is about <b>${L.d.min} min</b> (${one(L.d.km)} km).</p>
+          <p class="rn-crewnext-by">${L.late ? `<b>Leave now.</b> Leaving now gets you there about ${when(new Date(L.arrive))}${L.arrive > eta ? ', after them' : `, ${dur(eta - L.arrive)} ahead of them`}.` : `<b>Leave by ${when(new Date(L.by))}</b> to be there ${AHEAD} minutes ahead of them.`}</p>
+          <p class="fd-hint">Drive times are a guide from the road map: allow more for gravel, traffic at the trailheads and the walk in.</p>`;
+      }
+    }
+  }
+  // When you (on your target) or your runner (crews: live, or from where they were last seen) would pass a point
+  // picked on the map or the profile.
+  function passNote(En, km) {
+    if (!stage || En !== E()) return '';
+    const S = stage, P = S.points, rk = toRace(S, km);
+    if (rk < 0 || rk > P[P.length - 1].km + 0.05) return '';
+    if (mode === 'crew') {
+      const lr = crewLive(), lp = lr && !lr.wrong && lr.p != null ? lr.p : null, sp = lp == null ? seenPace() : null, p = lp != null ? lp : sp ? sp.p : null;
+      if (p == null) return '';
+      const at = lr && !lr.wrong && lr.km != null ? toRace(S, lr.km) : sp ? P[sp.i].km : null;
+      if (at != null && rk <= at) return 'Your runner has been through here.';
+      return `Your runner passes here about <b>${when(new Date(timeAt(S, rk, p)))}</b>${lp != null ? ', at the pace they\'ve run so far' : ', from where they were last seen'}.`;
+    }
+    const tp = targetPace();
+    return tp == null ? '' : `On your target you'd be here about <b>${when(new Date(timeAt(S, rk, tp)))}</b>.`;
+  }
+  if ($('rnCrewBib')) {
+    $('rnCrewBib').addEventListener('change', () => { store.set('crewBib', $('rnCrewBib').value); plan(); home(); });
+    $('rnCrewFrom').addEventListener('change', () => { store.set('crewFrom.' + KEY(), $('rnCrewFrom').value); plan(); });
+    // The follow list changed on the Track tab, or the feeds brought something new: the Crew tab keeps up.
+    addEventListener('rn-follow', () => { if (mode === 'crew') plan(); });
+    setInterval(() => { if (mode === 'crew' && tab === 'aid' && !document.hidden) plan(); }, 60e3);
+    if (window.GPTTracking && GPTTracking.onUpdate) GPTTracking.onUpdate(() => { if (mode === 'crew' && stage && (tab === 'aid' || tab === 'home') && !document.hidden) plan(); });
   }
   $('rnTarget').addEventListener('input', () => { store.set('target.' + KEY(), $('rnTarget').value); plan(); home(); });
   // Once they leave the box, show what was understood: 3200 becomes 32:00.
@@ -529,8 +709,82 @@
     $('rnCard').querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => { ticks[cb.dataset.i] = cb.checked; store.set('cardTicks', ticks); });
     $('rnCard').querySelectorAll('details').forEach(d => d.ontoggle = () => { open[d.dataset.i] = d.open; store.set('cardOpen', open); });
     $('rnCard').querySelectorAll('[data-go]').forEach(b => b.onclick = () => setTab(b.dataset.go));
-    textLink(); showW3w();
+    textLink(); showW3w(); rcShown = ''; rcDraw();
   }
+
+  // ---------- Tell Race Control (js/live.js: GPTLive.help) ----------
+  // A message to the Control board: the bib, the position and what's wrong. Only offered while a board is watching
+  // (the Worker says so), so it never goes to an empty room. Call 000 and Call race medical stay above it. What's sent
+  // is in English whatever the Help language, so the board can read it. [key, label, English, urgent]
+  const LV = window.GPTLive;
+  const RC_WHAT = [['hurt', 'rcHurt', 'I\'m hurt or sick', true], ['other', 'rcOther', 'Another runner needs help', true], ['lost', 'rcLost', 'I\'m lost', false], ['else', 'rcElse', 'Something else', false]];
+  let rcShown = '', rcWas = '';
+  function rcDraw() {
+    const box = $('rnRc'); if (!box || !LV) return;
+    const U = T(), cur = LV.help.current(), body = $('rnRcBody');
+    // The form stays once it's being filled in, even if the board has just gone quiet: sending then says so.
+    const started = rcShown.startsWith('form') && body.querySelector('input:checked, #rnRcNote:not(:placeholder-shown)');
+    if (!U.rcSend || (!cur && !LV.help.open() && !started)) { box.hidden = true; rcShown = ''; return; }
+    box.hidden = false; $('rnRcTitle').textContent = U.rcTitle;
+    const tm = t => hm.format(new Date(t));
+    if (!cur) {
+      const key = 'form:' + viewLang();
+      if (rcShown === key) return;
+      rcShown = key;
+      body.innerHTML = `<p class="fd-hint rn-rc-intro">${rich(U.rcIntro)}</p>
+        <label class="rn-rc-l" for="rnRcBib">${esc(U.rcBib)}</label>
+        <input id="rnRcBib" class="rn-rc-in rn-rc-bib" inputmode="numeric" autocomplete="off" maxlength="6" value="${esc(store.get('myBib', '') || '')}">
+        <p class="rn-rc-l" id="rnRcWhatL">${esc(U.rcWhat)}</p>
+        <div class="lv-chips" role="radiogroup" aria-labelledby="rnRcWhatL">${RC_WHAT.map(w => `<label><input type="radio" name="rnRcWhat" value="${w[0]}">${esc(U[w[1]])}</label>`).join('')}</div>
+        <label class="rn-vh" for="rnRcNote">${esc(U.rcNote)}</label>
+        <input id="rnRcNote" class="rn-rc-in" type="text" maxlength="160" autocomplete="off" placeholder="${esc(U.rcNote)}">
+        <button type="button" class="fd-big" id="rnRcSend">${esc(U.rcSend)}</button>
+        <p class="fd-hint" id="rnRcMsg" role="status"></p>`;
+      $('rnRcSend').onclick = rcSend;
+      return;
+    }
+    const b = cur.body || {};
+    const key = ['st', viewLang(), cur.id, cur.state, cur.tries ? 1 : 0, cur.ack, cur.sent, cur.closed].join('|');
+    if (rcShown === key) return;
+    rcShown = key;
+    const lines = [];
+    if (cur.state === 'refused') lines.push(['warn', U.rcRefused]);
+    else if (cur.closed) lines.push(['', U.rcClosed]);
+    else if (cur.state === 'queued') lines.push(cur.tries ? ['warn', U.rcQueued] : ['', U.rcSending]);
+    else if (cur.state === 'ack') { lines.push(['ok', fill(U.rcAck, { time: tm(cur.ack) })]); if (cur.sent) lines.push(['ok', fill(U.rcOnWay, { time: tm(cur.sent) })]); }
+    else lines.push(['', fill(U.rcSent, { time: tm(cur.sentAt || cur.t) })]);
+    const withIt = cur.state === 'refused' ? '' : b.lat == null ? U.rcNoPos : b.rk != null ? fill(U.rcWith, { km: one(b.rk), acc: b.acc }) : fill(U.rcWithPos, { acc: b.acc });
+    body.innerHTML = lines.map(l => `<p class="lv-line ${l[0]}">${rich(l[1])}</p>`).join('') +
+      `<p class="fd-hint">${esc(b.what || '')}${b.bib ? ` · ${esc(U.rcBib)} ${esc(b.bib)}` : ''}${withIt ? '<br>' + esc(withIt) : ''}</p>
+      <button type="button" class="btn" id="rnRcNew">${esc(cur.state === 'queued' ? U.rcCancel : U.rcNew)}</button>`;
+    $('rnRcNew').onclick = () => { LV.help.clear(); rcDraw(); };
+    // A buzz when Race Control answers, wherever the phone is in the app.
+    const now = cur.id + cur.state + (cur.sent || '');
+    if (rcWas && rcWas !== now && cur.state === 'ack' && navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch (e) { }
+    rcWas = now;
+  }
+  function rcSend() {
+    const U = T(), pick = (document.querySelector('input[name=rnRcWhat]:checked') || {}).value, w = RC_WHAT.find(x => x[0] === pick);
+    const note = $('rnRcNote').value.trim().slice(0, 160), bib = $('rnRcBib').value.replace(/[^0-9A-Za-z]/g, '').slice(0, 8), out = $('rnRcMsg');
+    if (!w) { out.textContent = U.rcPick; out.classList.add('bad'); return; }
+    out.classList.remove('bad'); store.set('myBib', bib);
+    let gone = false;
+    const go = () => {
+      if (gone) return; gone = true;
+      const ok = here && here.stage === stage && Date.now() - here.t < 3 * 60e3, En = E(), off = ok && here.offM > 300;
+      // The board places a km on the courses it knows (not the 6k, 5k or 2k loops): those go as a position only.
+      const known = ok && !off && MAIN.courses && MAIN.courses.includes(En);
+      const body = { what: w[2] + (mode === 'crew' ? ' (from a crew phone)' : '') + (note ? '. ' + note : '') + (off ? ` (${dist(here.offM)} off the course)` : ''), urgent: w[3], bib, race: rlab() };
+      if (ok) Object.assign(body, { lat: +here.lat.toFixed(5), lon: +here.lon.toFixed(5), acc: Math.round(here.acc), t: here.t });
+      if (ok && here.w3w) body.w3w = here.w3w;
+      if (known) Object.assign(body, { course: En.id, km: Math.round(here.gk * 10) / 10, rk: Math.round(here.rk * 10) / 10 });
+      rcShown = ''; LV.help.send(body); rcDraw();
+    };
+    if (here && here.stage === stage && Date.now() - here.t < 60e3) return go();
+    $('rnRcSend').disabled = true; out.textContent = U.finding;
+    locate(go, go);
+  }
+  if (LV) LV.onChange(rcDraw);
   if ($('rnLang')) {
     $('rnLang').addEventListener('change', () => { store.set('lang', $('rnLang').value); flipEn = false; helpTab(); });
     $('rnLangFlip').addEventListener('click', () => { flipEn = !flipEn; helpTab(); });
@@ -615,9 +869,9 @@
       <ul class="rn-tablist">
         <li><b>Home</b> Your race at a glance: the countdown, start and cut-off, and what's on next.</li>
         <li><b>Map</b> Your race on a big topo map. Tap <b>◎</b> to see where you are: your race km, the next aid station, the climb to it, its cut-off and when you'll get there show under the profile.</li>
-        <li><b>${mode === 'crew' ? 'Crew' : 'Aid'}</b> ${mode === 'crew' ? 'Crew points with directions and your runner’s expected times.' : 'Every aid station with cut-offs. Add a target time to see your splits.'}</li>
+        <li><b>${mode === 'crew' ? 'Crew' : 'Aid'}</b> ${mode === 'crew' ? 'Crew points with directions, your runner’s expected times (live, once you follow them on the Track tab), the drive between crew points and when to leave for the next one.' : 'Every aid station with cut-offs. Add a target time to see your splits.'}</li>
         <li><b>Help</b> Your safety tab, in English, Japanese, Chinese, Russian or Polish: call 000 or race medical, find your three words (what3words) and GPS numbers to read out, share your location, and what to do if you're lost, bitten, or helping another runner.</li>
-        <li><b>Track</b> Follow runners live by bib or name: where they are, their time at each checkpoint, when they're expected next, and the live order of each race. Share a runner's link with family and friends.</li>
+        <li><b>Track</b> Follow runners live by bib or name: where they are, their place, their time at each checkpoint, when they're expected next and the time they have in hand at the next cut-off, and the live order of each race. Turn on alerts to hear when they reach a checkpoint. Once you've tapped <b>◎</b> on the map, tap any runner to see how far they are from you and when they'll reach you. Share a runner's link with family and friends.</li>
         <li><b>Schedule</b> What's on now, what's next, and the full schedule.</li>
         <li><b>Gear</b> Tick off your mandatory gear.</li>
       </ul><p class="fd-hint">Tap <b>?</b> at the top any time to see this again. A guide only: follow the course markings and the race briefing.${C.tracking && C.tracking.credit && C.tracking.credit.name ? ` Timing and tracking by ${C.tracking.credit.url ? `<a href="${esc(C.tracking.credit.url)}" target="_blank" rel="noopener">${esc(C.tracking.credit.name)}</a>` : esc(C.tracking.credit.name)}.` : ''}</p>`;
@@ -645,6 +899,7 @@
   $('rnChangeRace').onclick = () => { setTab('home'); $('rnRace').focus(); };
   profile = GPTProfile(profOpts = { height: 118, summary: () => whereNow,
     el: $('rnProf'), course: engineFor(R.stages[race.stages[0]]) || MAIN, map: () => map, who: 'you',
+    pointNote: (En, km) => passNote(En, km),
     empty: RUN_HINT,
     window: En => stage && En === E() ? { k0: stage.points[0].gk, k1: stage.points[stage.points.length - 1].gk } : null,
     // A map tap only ever shows the runner's own course, not the GPT100 where the 14k shares its track.
@@ -665,6 +920,16 @@
   profShow(store.get('profOpen', true) !== false);
   if (INFO.medicalPhone) { $('rnCallMed').hidden = false; $('rnCallMed').href = 'tel:' + INFO.medicalPhone.replace(/\s/g, ''); }
   $('rnW3wGet').addEventListener('click', () => { $('rnW3wMsg').textContent = T().finding; locate(); });
+  // The Map tab's switches. Follow me comes back on its own only if the phone already lets the app use location.
+  if ($('rnFollowMe')) {
+    $('rnFollowMe').addEventListener('change', e => followMe(e.target.checked));
+    if (store.get('followMe', false) && navigator.permissions && navigator.permissions.query) navigator.permissions.query({ name: 'geolocation' }).then(p => { if (p.state === 'granted' && stage && E()) followMe(true, true); }).catch(() => { });
+    const LVA = window.GPTLive && GPTLive.awake;
+    if (LVA && LVA.supported) {
+      $('rnAwakeL').hidden = false; $('rnAwake').checked = LVA.on();
+      $('rnAwake').addEventListener('change', e => { LVA.set(e.target.checked); msg(e.target.checked ? 'The screen stays on while the app is open. It uses more battery.' : 'The screen will sleep as usual.'); });
+    }
+  }
   helpTab();
   $('rnNotices').innerHTML = (INFO.notices || []).map(n => `<p class="notice">${esc(n.text)}</p>`).join('');
   if (C.tracking && C.tracking.url) { const t = $('fdTrack'); t.hidden = false; t.innerHTML = `<a class="btn" href="${esc(C.tracking.url)}" target="_blank" rel="noopener">${esc(C.tracking.label || 'Live tracking')}</a>${C.tracking.credit && C.tracking.credit.name ? ` <span class="fd-hint">by ${C.tracking.credit.url ? `<a href="${esc(C.tracking.credit.url)}" target="_blank" rel="noopener">${esc(C.tracking.credit.name)}</a>` : esc(C.tracking.credit.name)}</span>` : ''}`; }

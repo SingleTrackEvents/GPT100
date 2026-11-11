@@ -62,7 +62,7 @@ body.field { background: var(--bg); font-size: 16px; }
 /* Race and cut-offs */
 .fd-raceline { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
 .fd-late { color: var(--red); }
-.rn-row.fd-past { opacity: .45; }
+.rn-row.fd-past { opacity: .62; }
 #fdRaceCard .rn-schedfor { margin-bottom: 4px; }
 #fdRaceCard .rn-stages { margin-bottom: 4px; }
 /* Tabs: Where, Map and Race */
@@ -71,7 +71,7 @@ body.field { background: var(--bg); font-size: 16px; }
 .fd-mapfor .fd-linkbtn { font: 700 13px var(--body); letter-spacing: 0; white-space: nowrap; }
 .fd-maptab .fd-mapcard { margin-top: 0; }
 /* The Map tab fills the screen between the header and the tabs: the map takes the room, the profile sits at the bottom. */
-.fd-maptab:not([hidden]) { display: flex; flex-direction: column; height: calc(var(--vvh, 100svh) - var(--fd-chrome, 156px) - env(safe-area-inset-bottom)); min-height: 440px; }
+.fd-maptab:not([hidden]) { display: flex; flex-direction: column; height: calc(var(--vvh, 100svh) - var(--fd-chrome, 156px) - var(--lv-h, 0px) - env(safe-area-inset-bottom)); min-height: 440px; }
 .fd-maptab .fd-mapfor { flex: none; }
 .fd-maptab .fd-mapcard { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
 .fd-maptab #fdMap { flex: 1; height: auto; min-height: 220px; }
@@ -143,7 +143,7 @@ body.field .gpt-fs-btn, body.field .rn-locbtn { width: 44px; height: 44px; }
 html.demo-on body.field .demo-bar { bottom: calc(70px + env(safe-area-inset-bottom)); }
 html.demo-on body.field .demo-list { bottom: calc(118px + env(safe-area-inset-bottom)); }
 html.demo-on body.field { padding-bottom: 70px; }
-html.demo-on body.field .fd-maptab:not([hidden]) { height: calc(var(--vvh, 100svh) - var(--fd-chrome, 156px) - 66px - env(safe-area-inset-bottom)); min-height: 380px; }
+html.demo-on body.field .fd-maptab:not([hidden]) { height: calc(var(--vvh, 100svh) - var(--fd-chrome, 156px) - var(--lv-h, 0px) - 66px - env(safe-area-inset-bottom)); min-height: 380px; }
 /* Landscape phones: as in the runner app, the map beside the profile, both between the header and the tabs */
 @media (orientation: landscape) and (max-height: 500px) {
   body.field .fd-maptab:not([hidden]) { min-height: 0; --fd-chrome: 138px; }
@@ -163,7 +163,7 @@ html.demo-on body.field .fd-maptab:not([hidden]) { height: calc(var(--vvh, 100sv
 .fd-rbtn { display: flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 11px 0 9px; border: 0; border-radius: 4px; background: var(--paper); color: var(--ink); font: 700 14px var(--body); cursor: pointer; }
 .fd-rbtn:hover { background: var(--hover); }
 .fd-rbtn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.fd-rbtn.on { background: var(--ink); color: var(--paper); }
+.fd-rbtn.on { background: var(--sel); color: var(--on-sel); }
 body.field .fd-rp { position: fixed; inset: 0; z-index: 2600; width: auto; max-width: none; border: 0; padding: 0 14px calc(24px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
 body.field .fd-rp .mp-panel-head { position: sticky; top: 0; z-index: 1; margin: 0 -14px; padding: max(8px, env(safe-area-inset-top)) 14px 6px; background: var(--paper); border-bottom: 1px solid var(--line); }
 body.field .fd-rp .mp-x { width: 44px; height: 44px; font-size: 26px; color: var(--ink); }
@@ -186,3 +186,16 @@ body.field .fd-rp .btn.small { min-height: 44px; }
   .fd-trail-key { border-top-color: #b98ae8; }
   .rn-row.fd-past { opacity: .8; }
 }
+/* Straight onto the Control board, and this phone on the Control map (js/live.js) */
+.fd-rc { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.fd-rc h3 { margin: 0 0 8px; font: 700 15px var(--body); letter-spacing: 0; text-transform: none; }
+.fd-rcbtns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fd-rcbtns .btn { min-height: 48px; font-size: 15px; white-space: normal; line-height: 1.2; }
+.fd-rcbtns .btn:disabled { opacity: .45; cursor: default; }
+.fd-rc-urgent { border-color: var(--red-fill); color: var(--red); }
+.fd-rc-what { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.fd-rc .lv-line .fd-linkbtn { padding-left: 0; }
+.fd-share form { display: grid; gap: 4px; }
+.fd-share input[type=text] { min-height: 48px; padding: 0 12px; font-size: 17px; border: 2px solid var(--ink); border-radius: 10px; background: var(--input); color: var(--ink); margin-bottom: 8px; }
+.fd-share .btn { justify-self: start; min-height: 48px; }
+.fd-share .lv-line { margin: 0 0 8px; }

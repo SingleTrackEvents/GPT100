@@ -177,7 +177,7 @@
         <div class="wx-head"><h1>Weather</h1><p id="wxUpd" class="wx-upd"></p>${W.refreshUrl ? '<div class="wx-refresh"><button id="wxRefresh" class="btn small" type="button">Refresh now</button><span id="wxRefreshMsg" class="wx-upd" role="status"></span></div>' : ''}</div>
         <div id="wxWarn"></div>
         <div class="seg wx-views" role="tablist">
-          <button data-v="triggers">Triggers</button><button data-v="timeline">Timeline</button><button data-v="sim">Simulator</button><button data-v="models">Models</button>
+          <button data-v="triggers" role="tab">Triggers</button><button data-v="timeline" role="tab">Timeline</button><button data-v="sim" role="tab">Simulator</button><button data-v="models" role="tab">Models</button>
         </div>
         <div id="wxView"></div>
       </div>
@@ -191,7 +191,7 @@
   function setView(v) {
     if (v !== 'sim') stopPlay();
     view = v;
-    $('wxBody').querySelectorAll('.wx-views button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+    $('wxBody').querySelectorAll('.wx-views button').forEach(b => { b.classList.toggle('on', b.dataset.v === v); b.setAttribute('aria-selected', b.dataset.v === v); });
     renderView();
   }
   function header() {
@@ -212,7 +212,7 @@
   function renderView() {
     if (!built) return;
     header();
-    $('wxBody').querySelectorAll('.wx-views button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
+    $('wxBody').querySelectorAll('.wx-views button').forEach(b => { b.classList.toggle('on', b.dataset.v === view); b.setAttribute('aria-selected', b.dataset.v === view); });
     const V = $('wxView');
     if (!latest) { V.innerHTML = ''; return; }
     if (view === 'triggers') {

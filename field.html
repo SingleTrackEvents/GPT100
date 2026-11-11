@@ -6,18 +6,16 @@
 <title>GPT100 Field</title>
 <meta name="description" content="GPT100 field app for Safety Officers, sweeps and aid station crews: where am I, the nearest way out, local weather and send my location.">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#111111" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#223c2c" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12231a" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest-field.webmanifest">
 <link rel="icon" href="icons/icon-48.png" type="image/png" sizes="48x48">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Montserrat:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=102">
-<link rel="stylesheet" href="css/field.css?v=102">
-<link rel="stylesheet" href="css/runner.css?v=102">
+<link rel="stylesheet" href="lib/fonts.css?v=104">
+<link rel="stylesheet" href="lib/leaflet.css?v=104">
+<link rel="stylesheet" href="css/app.css?v=104">
+<link rel="stylesheet" href="css/field.css?v=104">
+<link rel="stylesheet" href="css/runner.css?v=104">
 </head>
 <body class="field">
 <header class="top">
@@ -37,6 +35,8 @@
       <button type="button" data-go="where" class="rn-quick-help"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z M12 7.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg><span>Send my<br>location</span></button>
     </div>
     <p id="fdTrack" class="fd-track" hidden></p>
+    <!-- Alerts for Race Control's notices (js/live.js) -->
+    <div id="fdAlerts" class="fd-alerts" hidden></div>
   </div>
 
   <!-- Where: where am I, send my location, the way out and the weather -->
@@ -66,6 +66,13 @@
         <a id="fdSend" class="fd-big fd-wa" href="#" target="_blank" rel="noopener">Send my location</a>
       </div>
       <p class="fd-hint">Your note goes in this and the Urgent message. Opens WhatsApp with the message ready. Pick the Safety Officer and Rescue Team group or Event HQ, then send. With weak signal it sends when it can.</p>
+      <!-- Straight onto the Control board, while Race Control is watching it (js/live.js) -->
+      <div id="fdRc" class="fd-rc" hidden>
+        <h3>Or put it on the Control board</h3>
+        <div class="fd-rcbtns"><button id="fdRcSend" class="btn" type="button">My location</button><button id="fdRcUrgent" class="btn fd-rc-urgent" type="button">Urgent: casualty here</button></div>
+        <div id="fdRcMsg" role="status"></div>
+        <p class="fd-hint">Goes to Race Control's screen with your position and note, no WhatsApp needed. With no signal it's kept and sent when there is. You'll see here when they acknowledge it.</p>
+      </div>
     </section>
 
     <section class="fd-card fd-wayout">
@@ -80,11 +87,21 @@
     </section>
 
   </div>
+  <!-- Show this phone on the Control board's map: a call sign and the team code from Race Control (js/live.js) -->
+  <section class="fd-card fd-share" id="fdShare" hidden>
+    <h2>Show me on the Control map</h2>
+    <div id="fdShareBody"></div>
+  </section>
   </div>
 
   <!-- Map: big, kept to the picked race -->
   <div class="rn-tab fd-maptab" data-tab="map" hidden>
     <p class="fd-mapfor"><span id="fdMapFor"></span> <button type="button" class="fd-linkbtn" id="fdChangeRace">Change race</button></p>
+    <!-- Keep updating (as on the Where tab) and Keep screen on (js/live.js) -->
+    <div class="rn-mapopts lv-chips">
+      <label><input type="checkbox" id="fdFollow2">Keep updating</label>
+      <label id="fdAwakeL" hidden><input type="checkbox" id="fdAwake">Keep screen on</label>
+    </div>
     <section class="fd-card fd-mapcard">
       <div id="fdMap" aria-label="Map"></div>
       <div id="fdProf" class="fd-prof"></div>
@@ -120,39 +137,40 @@
 <!-- The Weather tab code supplies the weather line; it stays hidden here. -->
 <div id="wxBody" hidden></div>
 
-<script src="js/viewport.js?v=102"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="js/heading.js?v=102"></script>
-<script src="data/config.js?v=102"></script>
-<script src="data/course.js?v=102"></script>
-<script src="data/courses.js?v=102"></script>
-<script src="data/course-w3w.js?v=102"></script>
-<script src="data/access-edits.js?v=102"></script>
-<script src="data/contingency.js?v=102"></script>
-<script src="js/engine.js?v=102"></script>
-<script src="js/contingency.js?v=102"></script>
-<script src="data/safety-officers.js?v=102"></script>
-<script src="data/tiles.js?v=102"></script>
-<script src="js/basemap.js?v=102"></script>
-<script src="js/profile.js?v=102"></script>
-<script src="data/helipads.js?v=102"></script>
-<script src="js/helipads.js?v=102"></script>
-<script src="data/track-grades.js?v=102"></script>
-<script src="js/track.js?v=102"></script>
-<script src="data/pacing.js?v=102"></script>
-<script src="data/demo-runners.js?v=102"></script>
-<script src="js/demo.js?v=102"></script>
-<script src="js/timing.js?v=102"></script>
-<script src="js/tracking.js?v=102"></script>
-<script src="js/fullscreen.js?v=102"></script>
-<script src="js/runners.js?v=102"></script>
-<script src="js/weather-core.js?v=102"></script>
-<script src="js/weather.js?v=102"></script>
-<script src="data/races.js?v=102"></script>
-<script src="data/splits.js?v=102"></script>
-<script src="data/runner-courses.js?v=102"></script>
-<script src="js/races.js?v=102"></script>
-<script src="js/intro.js?v=102"></script>
-<script src="js/field.js?v=102"></script>
+<script src="js/live.js?v=104"></script>
+<script src="js/viewport.js?v=104"></script>
+<script src="lib/leaflet.js?v=104"></script>
+<script src="js/heading.js?v=104"></script>
+<script src="data/config.js?v=104"></script>
+<script src="data/course.js?v=104"></script>
+<script src="data/courses.js?v=104"></script>
+<script src="data/course-w3w.js?v=104"></script>
+<script src="data/access-edits.js?v=104"></script>
+<script src="data/contingency.js?v=104"></script>
+<script src="js/engine.js?v=104"></script>
+<script src="js/contingency.js?v=104"></script>
+<script src="data/safety-officers.js?v=104"></script>
+<script src="data/tiles.js?v=104"></script>
+<script src="js/basemap.js?v=104"></script>
+<script src="js/profile.js?v=104"></script>
+<script src="data/helipads.js?v=104"></script>
+<script src="js/helipads.js?v=104"></script>
+<script src="data/track-grades.js?v=104"></script>
+<script src="js/track.js?v=104"></script>
+<script src="data/pacing.js?v=104"></script>
+<script src="data/demo-runners.js?v=104"></script>
+<script src="js/demo.js?v=104"></script>
+<script src="js/timing.js?v=104"></script>
+<script src="js/tracking.js?v=104"></script>
+<script src="js/fullscreen.js?v=104"></script>
+<script src="js/runners.js?v=104"></script>
+<script src="js/weather-core.js?v=104"></script>
+<script src="js/weather.js?v=104"></script>
+<script src="data/races.js?v=104"></script>
+<script src="data/splits.js?v=104"></script>
+<script src="data/runner-courses.js?v=104"></script>
+<script src="js/races.js?v=104"></script>
+<script src="js/intro.js?v=104"></script>
+<script src="js/field.js?v=104"></script>
 </body>
 </html>

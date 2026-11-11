@@ -756,7 +756,7 @@
       () => ({ title: '3. The other tabs', html: `<ul class="rn-tablist">
         <li><b>Weather</b> The race triggers (heat, wind, rain, storms, cloud), BOM warnings, fires nearby, radar and the models. <b>Refresh now</b> gets the latest; <b>Share update</b> writes the daily update.</li>
         <li><b>Medical</b> Needs the medical password. Who's on duty where and when, the vehicles, and the plan for any time.</li>
-        <li><b>Control</b> Needs the medical password. The Race Control board: incidents, teams, the radio log and live tracking.</li>
+        <li><b>Control</b> Needs the medical password. The Race Control board: incidents, teams, the radio log and live tracking. Its Phones panel sends notices to the apps, takes help requests from them and shows field phones on the map.</li>
       </ul><p class="fd-hint">Tap <b>?</b> at the top any time to see this again. Planning guide only: in an emergency call 000.${C.tracking && C.tracking.credit && C.tracking.credit.name ? ` Timing and tracking by ${C.tracking.credit.url ? `<a href="${esc(C.tracking.credit.url)}" target="_blank" rel="noopener">${esc(C.tracking.credit.name)}</a>` : esc(C.tracking.credit.name)}.` : ''}</p>` })
     ]
   });

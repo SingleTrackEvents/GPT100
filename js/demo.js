@@ -136,7 +136,7 @@
   }
 
   // ---------- the timing list (RaceResult shape) ----------
-  // As the timing team's list sends it: a plain array of rows, the contest by name, Status and Place (DNF in both),
+  // As the timing team's list sends it: a plain array of rows, the contest by name, Status and Place (DNF in both), Gender, an Age Group,
   // one column per timing reader (In and Out at the aid stations; no reader at the Ridgeline water point) as a
   // time of day, D:HH:MM:SS once past midnight of the start day, then Time (elapsed) and Diff. The demo's start day is
   // today's, so it sets tracking.chipDay to anchor them (on race day the start days come from data/races.js).
@@ -145,6 +145,9 @@
     ['JimmyCreekOut', 'Jimmy Creek Camp', 1], ['YarramGap', 'Yarram Gap'], ['GriffinFirelineIN', 'Griffin'], ['GriffinFirelineOut', 'Griffin', 1], ['CassidysGap', 'Cassidys'], ['BainggugCPIN', 'Bainggug'],
     ['BainggugCPOut', 'Bainggug', 1], ['Finish']];
   const FEED_NAME = { 'GPT100 Miler': 'GPT100 Solo/Pairs' };
+  // An age group for each made-up runner (the event's own groups, as an Age Group column would send them), so the
+  // demo shows the age category on every runner.
+  const AGE_GROUPS = ['Open', 'Masters', 'Open', '50-59', 'Open', 'Masters', '60-69', 'Open', 'Masters', 'Youth', '50-59', 'Open', 'Legends'];
   const mel = ms => ms + 11 * 3600e3, two = n => String(n).padStart(2, '0');
   const hms = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 3600)}:${two(Math.floor(s / 60) % 60)}:${two(s % 60)}`; };
   function timing() {
@@ -156,7 +159,7 @@
     const fin = {}, rows = RUN.map(r => {
       const km = kmAt(r, now), dnf = r.kase === 'dnf' && now >= r.tCase;
       const miss = r.kase === 'missed' ? COLS.map(c => c[1] && kmOf(c[1])).find(k => k != null && k >= r.caseKm - 0.05) : null;
-      const row = { Place: dnf ? 'DNF' : '', Status: dnf ? 'DNF' : '', Bib: r.bib, Name: r.name.replace(/^(.*) (\S+)$/, '$2, $1'), Contest: FEED_NAME[r.contest] || 'GPT ' + r.contest, Gender: +r.bib % 3 ? 'M' : 'F' };
+      const row = { Place: dnf ? 'DNF' : '', Status: dnf ? 'DNF' : '', Bib: r.bib, Name: r.name.replace(/^(.*) (\S+)$/, '$2, $1'), Contest: FEED_NAME[r.contest] || 'GPT ' + r.contest, Gender: +r.bib % 3 ? 'M' : 'F', AgeGroup: AGE_GROUPS[(+r.bib * 7) % AGE_GROUPS.length] };
       let last = 0;
       for (const [col, name, out] of COLS) {
         const k = col === 'Start' ? r.k0 : col === 'Finish' ? r.k1 : kmOf(name);
@@ -180,7 +183,7 @@
     const url = typeof input === 'string' ? input : input && input.url;
     if (typeof url !== 'string' || !url.startsWith(ORIGIN + '/')) return realFetch(input, init);
     const path = url.slice(ORIGIN.length + 1);
-    return path.startsWith('rc/') ? serveRC(path.slice(3), init) : serve(path.replace(/^feed\//, ''));
+    return path.startsWith('rc/') ? serveRC(path.slice(3), init) : /^(live|help|fault|field\/|push\/)/.test(path) ? serveLive(path, init) : serve(path.replace(/^feed\//, ''));
   };
   const resp = (body, h) => new Response(body, { status: 200, headers: Object.assign({ 'Content-Type': 'text/plain' }, h || {}) });
   async function serve(path) {
@@ -252,7 +255,10 @@
       if (o) { inc = merge(inc, o.patch); inc.updated = Math.max(inc.updated, o.t); inc.version += o.n; }
       incidents.push(inc);
     }
-    for (const [id, o] of Object.entries(over.inc)) if (!SEED.some(d => d.id === id)) incidents.push(Object.assign({ id }, o.patch, { updated: o.t, version: o.n }));
+    // Help requests sent from the runner or field app in another tab of this browser (the line to the phones, below).
+    const LS = liveStore();
+    for (const [id, h] of Object.entries(LS.help)) { const o = over.inc[id]; incidents.push(Object.assign({ id }, o ? merge(h, o.patch) : h, { updated: Math.max(h.updated, o ? o.t : 0), version: 1 + (o ? o.n : 0) })); }
+    for (const [id, o] of Object.entries(over.inc)) if (!SEED.some(d => d.id === id) && !LS.help[id]) incidents.push(Object.assign({ id }, o.patch, { updated: o.t, version: o.n }));
     for (const [id, label] of Object.entries(CUSTOM)) if (!units[id]) units[id] = { id, custom: true, label, status: 'available', incident: null, updated: realOf(0) };
     for (const [id, o] of Object.entries(over.units)) units[id] = Object.assign(units[id] || { id }, o.patch, { id, updated: o.t });
     NOTES.forEach(([at, text], i) => { if (at <= s) { const t = realOf(at); log.push({ id: Math.round(t) * 10 + 9, t, updated: t, incident: null, kind: 'note', text, who: 'Race control' }); } });
@@ -264,12 +270,33 @@
     await ready; setup();
     const [name, qs] = path.split('?'), now = Date.now();
     if (name === 'state') {
-      const since = +(new URLSearchParams(qs || '').get('since') || 0), b = board();
-      return json({ now, incidents: b.incidents.filter(i => i.updated > since), units: b.units.filter(u => u.updated > since), log: b.log.filter(l => l.updated > since).slice(0, 500) });
+      const since = +(new URLSearchParams(qs || '').get('since') || 0), b = board(), L = liveStore();
+      L.seen = now; saveLive(L);   // a board is open: the phones may send help requests
+      const fa = Object.values(L.faults);
+      return json({ now, incidents: b.incidents.filter(i => i.updated > since), units: b.units.filter(u => u.updated > since), log: b.log.filter(l => l.updated > since).slice(0, 500),
+        live: { help_on: L.help_on, field_code: L.field_code, notices: activeNotices(L, now), field: Object.values(L.field), faults: fa.length ? { n: fa.length, last: Math.max(...fa.map(f => f.last)), hits: fa.reduce((a, f) => a + f.n, 0) } : { n: 0 }, alerts: 0 } });
     }
+    if (name === 'faults' && !(init && init.body)) return json({ now, faults: Object.values(liveStore().faults).sort((a, b) => b.last - a.last) });
     let body = {}; try { body = JSON.parse(init && init.body || '{}'); } catch (e) { return json({ error: 'Bad request' }, 400); }
     const who = String(body.who || '').slice(0, 60);
     const addLog = (incident, kind, text) => { over.log.push({ id: now * 10 + 5, t: now, updated: now, incident, kind, text: String(text).slice(0, 1000), who }); };
+    if (name === 'notice') {
+      const L = liveStore();
+      if (body.clear) L.notices = L.notices.filter(n => n.id !== body.id);
+      else { const text = String(body.text || '').trim().slice(0, 280); if (!text) return json({ error: 'Empty' }, 400);
+        L.notices.unshift({ id: 'n' + now.toString(36), text, level: body.level === 'alert' ? 'alert' : 'info', aud: /^(runner|field)$/.test(body.aud) ? body.aud : 'all', by: who, t: now, until: +body.mins > 0 ? now + body.mins * 60e3 : null });
+        addLog(null, 'notice', 'Notice to ' + (body.aud === 'runner' ? 'runners and crews' : body.aud === 'field' ? 'the field app' : 'every phone') + ': ' + text); }
+      saveLive(L); saveRC();
+      return json({ ok: true });
+    }
+    if (name === 'settings') {
+      const L = liveStore(), pt = body.patch || {};
+      if (typeof pt.help_on === 'boolean') L.help_on = pt.help_on;
+      if (typeof pt.field_code === 'string') L.field_code = pt.field_code.trim().slice(0, 20);
+      saveLive(L);
+      return json({ ok: true });
+    }
+    if (name === 'faults') { const L = liveStore(); if (body.clear) L.faults = {}; saveLive(L); return json({ ok: true }); }
     if (name === 'incident') {
       const b = board(); let id = typeof body.id === 'string' ? body.id : null, cur = id && b.incidents.find(i => i.id === id);
       if (cur) { const o = over.inc[id] || { patch: {}, t: 0, n: 0 }; o.patch = merge(o.patch, body.patch || {}); o.t = now; o.n++; over.inc[id] = o; }
@@ -277,6 +304,8 @@
       const inc = board().incidents.find(i => i.id === id);
       if (body.note) addLog(id, 'incident', '#' + inc.num + ' ' + body.note);
       saveRC();
+      // A help request from a phone: what the board does with it is kept where that phone's tab can read it.
+      { const L = liveStore(); if (L.help[id]) { L.answers[id] = { ack: inc.ackAt || null, sent: (inc.times || {}).dispatched || null, onScene: (inc.times || {}).onScene || null, closed: inc.status === 'closed' }; saveLive(L); } }
       return json({ ok: true, incident: inc });
     }
     if (name === 'unit') {
@@ -291,6 +320,63 @@
       addLog(typeof body.incident === 'string' ? body.incident : null, 'note', body.text); saveRC();
       return json({ ok: true });
     }
+    return json({ error: 'Not found' }, 404);
+  }
+
+  // ---------- the line to the phones (js/live.js), as the Worker answers it ----------
+  // Kept in this browser, shared between tabs: a notice posted on the demo board in one tab shows in the runner app
+  // in another, a help request sent there lands on the board, and a field phone shows on its map. Alerts (which need
+  // the real Worker and the phone's own alert service) are not part of the demo.
+  const LIVE_KEY = 'gpt100_demo_live';
+  function liveStore() {
+    let v = null; try { v = JSON.parse(localStorage.getItem(LIVE_KEY) || 'null'); } catch (e) { }
+    // A new demo day starts clean.
+    if (!v || typeof v !== 'object' || Date.now() - (v.made || 0) > 18 * 3600e3) v = { made: Date.now(), help_on: true, field_code: 'DEMO', notices: [], help: {}, answers: {}, field: {}, faults: {}, seen: 0, n: 0 };
+    return v;
+  }
+  const saveLive = v => { try { localStorage.setItem(LIVE_KEY, JSON.stringify(v)); } catch (e) { } };
+  const activeNotices = (L, now) => L.notices.filter(n => !n.until || n.until > now).slice(0, 10);
+  async function serveLive(path, init) {
+    await ready;
+    const [name, qs] = path.split('?'), now = Date.now(), L = liveStore();
+    // A board counts as watched for three minutes after it last asked (as on the real Worker).
+    const open = L.help_on && now - (L.seen || 0) < 3 * 60e3;
+    if (name === 'live') return json({ now, notices: activeNotices(L, now), help: { open }, field: { on: !!L.field_code }, push: { key: '' } });
+    if (name === 'help' && !(init && init.body)) {
+      const id = 'h-' + (new URLSearchParams(qs || '').get('id') || ''), h = L.help[id];
+      return json(h ? Object.assign({ found: true, num: h.num, ack: null, sent: null, onScene: null, closed: false }, L.answers[id]) : { found: false });
+    }
+    let b = {}; try { b = JSON.parse(init && init.body || '{}'); } catch (e) { return json({ error: 'Bad request' }, 400); }
+    const txt = (v, n) => String(v == null ? '' : v).slice(0, n);
+    if (name === 'help') {
+      const id = 'h-' + txt(b.id, 36);
+      if (L.help[id]) return json({ ok: true, num: L.help[id].num, again: true });
+      if (!open) return json({ closed: true, error: 'Race Control isn\'t taking messages from the app right now' }, 409);
+      const app = b.app === 'field' ? 'field' : 'runner';
+      L.n++;
+      L.help[id] = { num: 30 + L.n, created: now, updated: now, status: 'open', severity: b.urgent === true ? 'urgent' : 'priority', source: app, needsAck: true, times: { call: now },
+        course: b.course || undefined, km: typeof b.km === 'number' ? b.km : null, lat: typeof b.lat === 'number' ? b.lat : undefined, lon: typeof b.lon === 'number' ? b.lon : undefined, acc: +b.acc || undefined,
+        w3w: txt(b.w3w, 60) || undefined, bib: txt(b.bib, 8), name: '', race: txt(b.race, 40), reporter: app === 'field' ? 'Field app' + (b.from ? ': ' + txt(b.from, 40) : '') : 'Runner app (their own phone)',
+        desc: txt(b.what, 400) || 'Asked for help from the app.' };
+      saveLive(L);
+      return json({ ok: true, num: L.help[id].num });
+    }
+    if (name === 'fault') {
+      const sig = [b.app, b.msg, b.src, b.line].join('|').slice(0, 200), f = L.faults[sig];
+      if (f) { f.n++; f.last = now; } else L.faults[sig] = { sig, app: txt(b.app, 12), build: txt(b.build, 8), msg: txt(b.msg, 300), src: txt(b.src, 80).replace(/^.*\//, ''), line: +b.line || 0, stack: txt(b.stack, 600), ua: txt(b.ua, 160), page: txt(b.page, 40), n: 1, first: now, last: now };
+      saveLive(L);
+      return json({ ok: true });
+    }
+    if (name === 'field/check' || name === 'field/pos') {
+      if (!L.field_code) return json({ off: true, error: 'Race Control hasn\'t turned on position sharing' }, 409);
+      if (txt(b.code, 20).toLowerCase() !== L.field_code.toLowerCase()) return json({ error: 'That team code isn\'t right' }, 401);
+      if (name === 'field/check') return json({ ok: true });
+      if (typeof b.lat !== 'number' || typeof b.lon !== 'number' || !b.id || !b.name) return json({ error: 'Bad request' }, 400);
+      L.field[txt(b.id, 40)] = { id: txt(b.id, 40), name: txt(b.name, 40), lat: b.lat, lon: b.lon, acc: +b.acc || 0, km: typeof b.km === 'number' ? b.km : null, course: txt(b.course, 12), offM: +b.offM || 0, t: now };
+      saveLive(L);
+      return json({ ok: true });
+    }
+    if (name.startsWith('push/')) return json({ error: 'Alerts aren\'t part of the demo' }, 400);
     return json({ error: 'Not found' }, 404);
   }
 

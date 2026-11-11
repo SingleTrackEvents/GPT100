@@ -119,8 +119,12 @@
       maxM = maxM || 40;
       const here = [route[ic][0], route[ic][1]], km = route[ic][2], out = [];
       let group = null;
+      // A quick flat-earth distance rules out nearly every point; the exact one is only worked out for the few close by.
+      const kx = Math.cos(here[0] * Math.PI / 180) * 111320, lim = (maxM * 1.05 + 2) ** 2;
       for (let i = 0; i < N; i++) {
         if (Math.abs(route[i][2] - km) < 0.5) continue;
+        const dy = (route[i][0] - here[0]) * 111320, dx = (route[i][1] - here[1]) * kx;
+        if (dy * dy + dx * dx > lim) continue;
         const d = metres(here, [route[i][0], route[i][1]]);
         if (d > maxM) continue;
         if (group && route[i][2] - route[group.i][2] < 0.5) { if (d < group.d) { group.i = i; group.d = d; } }
@@ -134,7 +138,15 @@
     // OpenStreetMap paths, worked out by tools/add_course.py; a point without one only joins if it is
     // right beside the course.
     function passes(lat, lon, maxM) {
-      const d = route.map(p => metres([lat, lon], [p[0], p[1]])), out = [];
+      // The exact distance only for points that could be within reach (a quick flat-earth distance rules out the rest):
+      // most access points are nowhere near most of a course.
+      const kx = Math.cos(lat * Math.PI / 180) * 111320, lim = (maxM * 1.05 + 2) ** 2, d = new Array(N), out = [];
+      let any = false;
+      for (let i = 0; i < N; i++) {
+        const dy = (route[i][0] - lat) * 111320, dx = (route[i][1] - lon) * kx;
+        if (dy * dy + dx * dx > lim) d[i] = Infinity; else { d[i] = metres([lat, lon], [route[i][0], route[i][1]]); any = true; }
+      }
+      if (!any) return out;
       for (let i = 0; i < N; i++) {
         if (d[i] > maxM) continue;
         let min = true;
@@ -200,40 +212,46 @@
 
     // Minutes on foot along the course between two km, before the climb: config.walkPace, or the slower pace of any
     // config.slowWalk section it crosses (GPT100 km, e.g. the rough ground below Seven Dials).
+    const SLOW = def.slowWalk || (def.main ? C.slowWalk || [] : []);
     function walkMin(k0, k1) {
       const lo = Math.min(k0, k1), hi = Math.max(k0, k1);
       let min = (hi - lo) * C.walkPace;
-      for (const s of def.slowWalk || (def.main ? C.slowWalk || [] : [])) {
+      for (const s of SLOW) {
         const o = Math.min(s.to, hi) - Math.max(s.from, lo);
         if (o > 0) min += o * (s.pace - C.walkPace);
       }
       return min;
     }
 
-    // Best way for one base to reach course index ic. f: the night factor on the walk and carry (1 by day).
-    function bestFor(key, ic, f) {
-      f = f || 1;
-      const km = route[ic][2];
-      let best = null;
+    // Each base's ways onto the course: every access point it can drive to, at each place the course passes it (twice on
+    // an out and back or a loop), with the drive time and the walk from the parking to the course. Worked out once per
+    // base: bestFor runs for every course point when the map's "over 2 h to reach" wash is drawn.
+    const WAYS = {};
+    function waysFor(key) {
+      if (WAYS[key]) return WAYS[key];
+      const out = [];
       for (const a of ACCESS) {
         const drive = driveMin(a, key);
         if (drive == null) continue;
-        // Join the course wherever it passes this access point (twice on an out and back or a loop).
-        for (const jn of a.joins) {
-          const j = jn.idx, conn = jn.conn_m / 1000;
-          const along = Math.abs(route[j][2] - km);
-          const up = climb(j, ic) + jn.conn_ascent;
-          const walk = (conn * C.walkPace + walkMin(route[j][2], km) + up * C.climbPenalty) * f;
-          const total = drive + walk;
-          if (!best || total < best.total) {
-            best = { key, a, idx: j, joinKm: route[j][2], drive, walk, total, walkKm: conn + along, climb: up, connM: jn.conn_m, connBack: jn.conn_back || 0, connGeom: jn.geom || null };
-          }
-        }
+        for (const jn of a.joins) out.push({ a, jn, idx: jn.idx, km: route[jn.idx][2], drive, conn: jn.conn_m / 1000, connMin: (jn.conn_m / 1000) * C.walkPace, up: jn.conn_ascent });
       }
-      if (best) {
-        // Carry-out back to the same access point at stretcher pace.
-        best.carry = carryMin(route[best.idx][2], km, best.connM / 1000, climb(ic, best.idx) + best.connBack, f);
+      return WAYS[key] = out;
+    }
+    // Best way for one base to reach course index ic. f: the night factor on the walk and carry (1 by day).
+    // quick: leave out the carry-out time (the wash only needs the time to reach).
+    function bestFor(key, ic, f, quick) {
+      f = f || 1;
+      const km = route[ic][2];
+      let w = null, total = Infinity, walk = 0, up = 0;
+      for (const x of waysFor(key)) {
+        const u = climb(x.idx, ic) + x.up;
+        const wk = (x.connMin + walkMin(x.km, km) + u * C.climbPenalty) * f;
+        if (x.drive + wk < total) { w = x; total = x.drive + wk; walk = wk; up = u; }
       }
+      if (!w) return null;
+      const jn = w.jn, best = { key, a: w.a, idx: w.idx, joinKm: w.km, drive: w.drive, walk, total, walkKm: w.conn + Math.abs(w.km - km), climb: up, connM: jn.conn_m, connBack: jn.conn_back || 0, connGeom: jn.geom || null };
+      // Carry-out back to the same access point at stretcher pace.
+      if (!quick) best.carry = carryMin(w.km, km, best.connM / 1000, climb(ic, best.idx) + best.connBack, f);
       return best;
     }
 
@@ -287,11 +305,13 @@
       bestAll = new Array(N);
       for (let i = 0; i < N; i++) {
         let b = null;
-        for (const base of BASES) { const r = bestFor(base.key, i); if (r && (!b || r.total < b.total)) b = r; }
+        for (const base of BASES) { const r = bestFor(base.key, i, 1, true); if (r && (!b || r.total < b.total)) b = r; }
         bestAll[i] = b;
       }
       return bestAll;
     }
+    // (bestAtAll leaves out the carry-out time: the full answer for a point, with it.)
+    const withCarry = (r, ic) => r && (r.carry != null ? r : Object.assign(r, { carry: carryMin(r.joinKm, route[ic][2], r.connM / 1000, climb(ic, r.idx) + r.connBack, 1) }));
 
     function sections() {
       const all = bestAtAll(), out = [];
@@ -310,9 +330,9 @@
         out.push({
           n: s + 1, from, to, startKm: from.trail_km, endKm: to.trail_km,
           lengthKm: to.trail_km - from.trail_km, climb: climb(i0, i1),
-          worst: worst && { km: route[worst.i][2], ic: worst.i, r: worst.r },
+          worst: worst && { km: route[worst.i][2], ic: worst.i, r: withCarry(worst.r, worst.i) },
           rating: worst ? rating(worst.r.total) : 'green',
-          access, rows: rows.map(i => ({ ic: i, km: route[i][2], r: all[i], worst: worst && i === worst.i }))
+          access, rows: rows.map(i => ({ ic: i, km: route[i][2], r: withCarry(all[i], i), worst: worst && i === worst.i }))
         });
       }
       return out;

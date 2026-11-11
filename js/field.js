@@ -7,7 +7,8 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const one = x => (Math.round(x * 10) / 10).toFixed(1);
   const tf = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  let here = null, watchId = null, map = null, layer = null, runnerLayer = null, fs = null, RP = null;
+  const LV = window.GPTLive; // the line to Race Control (js/live.js)
+  let here = null, watchId = null, map = null, layer = null, runnerLayer = null, runnerSheet = null, fs = null, RP = null;
   // The race clock: the demo's when it's on (js/demo.js, ?demo=), so cut-offs and expected times can be rehearsed.
   const D0 = window.GPT100_DEMO ? Date.parse(GPT100_DEMO.contests['GPT100 Miler'].start + ':00+11:00') : 0;
   const clock = () => window.GPTDemo && D0 ? D0 + GPTDemo.simNow() : Date.now();
@@ -142,7 +143,8 @@
   const SO = window.GPT && GPT.planPlaces ? GPT.planPlaces(window.GPT100_SO) : window.GPT100_SO;
   let soLayer = null, soKey = null;
   const soT0 = SO ? new Date(SO.t0 + '+11:00').getTime() : 0;
-  const soTime = h => new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(soT0 + h * 3600e3)).replace(',', '');
+  const soFmt = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Melbourne', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const soTime = h => soFmt.format(new Date(soT0 + h * 3600e3)).replace(',', '');
   function drawSO() {
     if (!SO || !soLayer) return;
     soLayer.clearLayers();
@@ -209,6 +211,8 @@
     if (window.GPTHeading) GPTHeading.gps(c);
     addTrail(c.latitude, c.longitude, c.accuracy);
     place(c.latitude, c.longitude, { acc: c.accuracy, alt: c.altitude, t: p.timestamp });
+    // On the Control board's map, if this phone is set to show there (at most once a minute).
+    if (LV && here && LV.field.cfg().on) LV.field.share({ lat: +c.latitude.toFixed(5), lon: +c.longitude.toFixed(5), acc: Math.round(c.accuracy), t: p.timestamp, km: Math.round(here.r.km * 10) / 10, course: here.E.id, offM: Math.round(here.offM) });
   }
   function gpsError(e) {
     const b = locBtn(); if (b) b.classList.remove('busy');
@@ -221,6 +225,8 @@
     if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
     if (on && window.GPTHeading) GPTHeading.start();
     if (on && navigator.geolocation) watchId = navigator.geolocation.watchPosition(gotFix, gpsError, { enableHighAccuracy: true, maximumAge: 15000 });
+    if ($('fdFollow2')) $('fdFollow2').checked = watchId != null;
+    shareDraw();
   }
   // On the Where tab the message sits under the button; on the map it floats over the map for a few seconds.
   let toastT = null;
@@ -287,6 +293,7 @@
   }
   function render() {
     if (!here) return;
+    tellMe();
     $('fdOut').hidden = false;
     const { E, r } = here, g = here.gps, S = situation();
     here.S = S;
@@ -369,12 +376,18 @@
     if (!TR.ready()) return `<div class="card trk"><h3>Runners near you</h3><p class="muted">${esc(TR.status())}</p></div>`;
     const back = TR.near(E, r.km, 6, 30).filter(x => TR.cur(x) <= r.km).sort((a, b) => TR.cur(b) - TR.cur(a)).slice(0, 6);
     const ahead = TR.near(E, r.km, 6, 30).filter(x => TR.cur(x) > r.km).sort((a, b) => TR.cur(a) - TR.cur(b)).slice(0, 3);
-    const row = (x, dir) => `<div class="row"><span>${TR.who(x)}<span class="sub">${TR.dist(Math.abs(TR.cur(x) - r.km) * 1000)} ${dir}${x.pos.est ? ' (estimated)' : ''}${x.pos.stopped ? ', <b>not moving</b>' : ''}. ${TR.seen(x)}</span></span></div>`;
+    // When they'd reach you at their pace, as their popup on the map says.
+    const due = x => { const m = TR.fromMe && TR.fromMe(x); return m && m.eta && m.eta > Date.now() ? `, with you about <b>${TR.clockAt(m.eta)}</b>` : ''; };
+    const row = (x, dir) => `<div class="row"><span>${TR.who(x)}<span class="sub">${TR.dist(Math.abs(TR.cur(x) - r.km) * 1000)} ${dir}${x.pos.est ? ' (estimated)' : ''}${x.pos.stopped ? ', <b>not moving</b>' : ''}${dir === 'back' ? due(x) : ''}. ${TR.seen(x)}</span></span><button class="btn small trk-go" type="button" data-bib="${esc(x.bib)}">Show</button></div>`;
     return `<div class="card trk"><h3>Runners near you</h3>` +
       (back.length ? `<p class="fd-hint">Coming towards you (nearest first):</p>` + back.map(x => row(x, 'back')).join('') : '<p class="muted">No tracked runners within 6 km behind you.</p>') +
       (ahead.length ? `<p class="fd-hint">Just past you:</p>` + ahead.map(x => row(x, 'ahead')).join('') : '') +
       `<p class="trk-src">${esc(TR.status())}</p></div>`;
   }
+  // Before the app knows where you are, a runner's popup says how to find out how far they are from you.
+  const ME_HINT = 'Tap ◎ to see how far they are from you.';
+  // Where you are, for the runners' popups and lists (js/tracking.js): from every fix, a typed km or your last location.
+  const tellMe = () => { if (window.GPTTracking) GPTTracking.setMe(here ? { lat: here.lat, lon: here.lon, t: here.t, course: here.E.id, km: here.r.km, offM: here.offM } : null); };
   if (window.GPTTracking) GPTTracking.onUpdate(() => { drawRunners(); if (RP) RP.render(); if (here && here.S && here.S.tier !== 'far' && here.S.tier !== 'long' && $('fdGrade')) $('fdGrade').innerHTML = (window.GPTTrack ? GPTTrack.card(here.r, here.E, { vehicle: here.w }) : '') + runnersHTML(here.E, here.r); });
   function drawRunners() {
     if (!runnerLayer || !window.GPTTracking) return;
@@ -382,7 +395,7 @@
     let open = null;
     runnerLayer.eachLayer(l => { if (l.isPopupOpen && l.isPopupOpen()) open = l.options.bib; });
     runnerLayer.clearLayers();
-    MAIN.courses.forEach(E => GPTTracking.draw(runnerLayer, E));
+    MAIN.courses.forEach(E => GPTTracking.draw(runnerLayer, E, null, null, { meHint: ME_HINT, sheet: runnerSheet }));
     if (open != null) runnerLayer.eachLayer(l => { if (l.options.bib === open && l.getPopup()) { const p = l.getPopup(); p.options.autoPan = false; l.openPopup(); p.options.autoPan = true; } });
   }
 
@@ -426,7 +439,7 @@
     $('fdHero').innerHTML = `<p class="rn-hero-race">${esc(race.label)}${race.stages.length > 1 ? ' · ' + esc(stage.label) : ''}</p>
       <p class="rn-hero-count">${count}</p>
       <div class="rn-hero-facts"><span><b>${one(fin.km)}</b> km</span><span><b>+${fin.up.toLocaleString('en-AU')}</b> m</span><span><b>${P.length - 2}</b> aid points</span></div>
-      <p>Start <b>${RX.when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${RX.when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}`;
+      <p>Start <b>${RX.when(P[0].ft)}</b> at ${esc(P[0].name)}<br>Final cut-off <b>${RX.when(fin.ct)}</b> at ${esc(fin.name)}</p>${extra}${RX.ridge ? RX.ridge(S) : ''}`;
     // The next cut-offs on this race (for sweeps), with how long until each.
     const nxt = P.filter((x, i) => i && x.ct && !x.noCut && x.ct.getTime() > now).slice(0, 3);
     $('fdHomeNext').innerHTML = `<h2>Next cut-offs</h2>` + (nxt.length ? nxt.map(x => `<div class="rn-now-i rn-home-i"><b>${RX.when(x.ct)}</b><span>${esc(x.name)} · km ${one(x.km)}</span><em>${until(x.ct.getTime() - now)}</em></div>`).join('') : '<p class="muted">All the cut-offs for this race have passed.</p>') +
@@ -462,7 +475,85 @@
   // No location, nothing to send: the buttons go dead rather than send an old one.
   function sendLinks() {
     [['fdSend', false], ['fdUrgent', true]].forEach(([id, u]) => { const a = $(id); a.href = here ? 'https://wa.me/?text=' + encodeURIComponent(message(u)) : '#'; a.setAttribute('aria-disabled', here ? 'false' : 'true'); });
+    rcDraw();
   }
+  // ---------- straight onto the Control board (js/live.js) ----------
+  // The location and note as an incident Race Control has to acknowledge. Offered only while a board is being
+  // watched; WhatsApp above stays the way to reach the Safety Officer and Rescue Team group.
+  function rcSend(urgent) {
+    if (!here || !LV) return;
+    const E = here.E, note = $('fdNote').value.trim().slice(0, 300), far = here.offM > 300;
+    const body = { app: 'field', urgent, from: LV.field.cfg().name || '', race: rname(), lat: +here.lat.toFixed(5), lon: +here.lon.toFixed(5), t: here.t,
+      what: (urgent ? 'Casualty here' : 'Location from the field') + (note ? ': ' + note : '.') + (far ? ` (${dist(here.offM)} off the course)` : '') + (here.gps ? '' : ' (position from a typed km)') };
+    if (here.gps) body.acc = Math.round(here.gps.acc);
+    if (!far && MAIN.courses.includes(E)) { body.course = E.id; body.km = Math.round(here.r.km * 10) / 10; }
+    if (here.w3w) body.w3w = here.w3w;
+    LV.help.send(body); rcDraw();
+  }
+  function rcDraw() {
+    const box = $('fdRc'); if (!box || !LV) return;
+    const cur = LV.help.current(), open = LV.help.open();
+    box.hidden = !cur && !open;
+    if (box.hidden) return;
+    const wait = !!cur && cur.state === 'queued';
+    $('fdRcSend').disabled = $('fdRcUrgent').disabled = !here || wait || !open;
+    let h = '';
+    if (cur) {
+      const n = cur.num ? '#' + cur.num : 'it';
+      const L = cur.state === 'refused' ? ['warn', cur.why === 'busy' ? 'Too many messages from this phone just now. Use WhatsApp or the radio.' : 'Race Control isn\'t taking messages from the app right now. Use WhatsApp or the radio.']
+        : cur.closed ? ['', `Race Control has closed ${n}.`]
+        : wait ? (cur.tries ? ['warn', 'No signal. It\'s kept on this phone and goes to Race Control when there is. Use the radio if it can\'t wait.'] : ['', 'Sending to Race Control…'])
+        : cur.state === 'ack' ? ['ok', `Race Control acknowledged ${n} at ${tf.format(cur.ack)}.${cur.sent ? ` Help sent ${tf.format(cur.sent)}.` : ''}`]
+        : ['', `On the Control board as ${n}, ${tf.format(cur.sentAt || cur.t)}. Waiting for Race Control to acknowledge.`];
+      h = `<p class="lv-line ${L[0]}">${esc(L[1])}<span class="fd-rc-what">${esc(((cur.body || {}).what || '').slice(0, 90))}</span><button type="button" class="fd-linkbtn" id="fdRcClear">${wait ? 'Cancel it' : 'Clear'}</button></p>`;
+    }
+    const out = $('fdRcMsg');
+    if (out.dataset.h !== h) { out.dataset.h = h; out.innerHTML = h; const c = $('fdRcClear'); if (c) c.onclick = () => { LV.help.clear(); rcDraw(); }; }
+  }
+
+  // ---------- show this phone on the Control map (js/live.js) ----------
+  // A call sign and the team code Race Control gives out. Then every GPS fix (Keep updating) goes to the board, at
+  // most once a minute, while the app is open. The card only shows once Race Control has set a code.
+  function shareDraw() {
+    const box = $('fdShare'); if (!box || !LV) return;
+    const c = LV.field.cfg(), avail = LV.field.available(), body = $('fdShareBody');
+    box.hidden = !avail && !c.on;
+    if (box.hidden) return;
+    if (c.on) {
+      const key = ['on', c.name, LV.field.status(), watchId != null].join('|');
+      if (body.dataset.k === key) return;
+      body.dataset.k = key;
+      body.innerHTML = `<p class="lv-line ok">Sharing as <b>${esc(c.name)}</b>. ${esc(LV.field.status() || 'Your position goes with the next GPS fix.')}</p>
+        ${watchId == null ? '<p class="lv-line warn">Keep updating is off, so Race Control only gets your position when you tap Where am I? <button type="button" class="fd-linkbtn" id="fdShareFollow">Turn it on</button></p>' : ''}
+        <p class="fd-hint">Race Control sees this phone on its map, about once a minute while the app is open and on screen. It stops when the app is closed or the phone sleeps.</p>
+        <button type="button" class="btn" id="fdShareStop">Stop sharing</button>`;
+      $('fdShareStop').onclick = () => { LV.field.set({ on: false }); shareDraw(); };
+      if ($('fdShareFollow')) $('fdShareFollow').onclick = () => { $('fdFollow').checked = true; follow(true); };
+      return;
+    }
+    if (body.dataset.k === 'form') return;
+    body.dataset.k = 'form';
+    body.innerHTML = `<p class="fd-hint">Safety Officers and sweeps: let Race Control see this phone on its map, so it knows who is nearest when something happens. Race Control gives out the team code.</p>
+      <form id="fdShareForm" autocomplete="off">
+        <label class="fd-label" for="fdShareName">Your call sign</label><input id="fdShareName" type="text" maxlength="24" placeholder="e.g. Sweep 2 or SO Mt Rosea" value="${esc(c.name)}">
+        <label class="fd-label" for="fdShareCode">Team code</label><input id="fdShareCode" type="text" maxlength="20" autocapitalize="characters" spellcheck="false" value="${esc(c.code)}">
+        <button class="btn" type="submit">Start sharing</button>
+      </form><p class="fd-hint bad" id="fdShareErr" role="alert"></p>`;
+    $('fdShareForm').onsubmit = async e => {
+      e.preventDefault();
+      const name = $('fdShareName').value.trim().slice(0, 24), code = $('fdShareCode').value.trim(), err = $('fdShareErr'), btn = e.target.querySelector('button');
+      if (!name || !code) { err.textContent = 'Type a call sign and the team code.'; return; }
+      btn.disabled = true; err.textContent = '';
+      const bad = await LV.field.check(code);
+      btn.disabled = false;
+      // No signal to check the code with: it's taken on trust, and the card says so if Race Control turns it down.
+      if (bad && !/^No signal/.test(bad)) { err.textContent = bad + '.'; return; }
+      LV.field.set({ on: true, name, code });
+      if (navigator.geolocation && watchId == null) { $('fdFollow').checked = true; follow(true); } else shareDraw();
+    };
+  }
+  if (LV) { LV.onChange(() => { rcDraw(); shareDraw(); LV.push.row($('fdAlerts')); }); LV.push.row($('fdAlerts')); }
+
   // The last location (with its time), the note and Keep updating are kept on this phone through a reload.
   function keep() {
     rstore.set('here', here && { lat: here.lat, lon: here.lon, cid: here.E.id, ic: here.r.ic, offM: here.offM, gps: here.gps, t: here.t, manual: here.manual, mk: here.mk });
@@ -504,7 +595,8 @@
     if (window.GPTHelipads) GPTHelipads.overlay(map, true);
     if (window.GPTTrack) { GPTBaseMap.overlay(map, 'Emergency markers', GPTTrack.overlay(['emergency']), false); GPTBaseMap.overlay(map, 'Camps and assembly areas', GPTTrack.overlay(['camp', 'assembly']), false); }
     trailLine = L.polyline([], { color: '#7a3db8', weight: 3, opacity: .9, dashArray: '1 6', lineCap: 'round', interactive: false }).addTo(map);
-    if (window.GPTTracking) { runnerLayer = L.layerGroup().addTo(map); drawRunners(); }
+    // On a phone a tap on a runner opens a sheet at the foot of the map card, not a popup (js/tracking.js).
+    if (window.GPTTracking) { runnerLayer = L.layerGroup().addTo(map); runnerSheet = GPTTracking.sheet($('fdMap').parentElement, map); drawRunners(); }
     layer = L.layerGroup().addTo(map);
     map.on('click', e => profile.showLL(e.latlng.lat, e.latlng.lng, map.getZoom()));
     // A small location button on the map, as in Google Maps.
@@ -718,7 +810,7 @@
   setTab(tab);
   // The Runners panel on the Map tab, as on the map page (js/runners.js): a sheet over the app on a phone, beside the
   // map on a big screen. Show goes to the Map tab first; field.html#bib=1047 opens on that runner.
-  if (map && window.GPTRunners) RP = GPTRunners({ map, layer: () => runnerLayer, panel: $('mpPanel'), button: $('fdRunners'), esc: true,
+  if (map && window.GPTRunners) RP = GPTRunners({ map, layer: () => runnerLayer, panel: $('mpPanel'), button: $('fdRunners'), esc: true, meHint: ME_HINT,
     before: () => { if (tab !== 'map') setTab('map'); map.invalidateSize(); if (pendingFit) { map.fitBounds(...pendingFit); pendingFit = null; } },
     opened: on => { if (on && fs && fs.on()) fs.toggle(); document.body.classList.toggle('fd-rp-on', on); },
     none: `<p class="muted">Live tracking isn't set up for this race yet. Once the GPS trackers or timing chips are linked, every runner shows here and on the map. To see how it looks, <a href="field.html?demo=1">run the demo</a>: made-up runners on the course, GPS and chips both.</p>` });
@@ -734,9 +826,10 @@
       () => ({ title: '3. How to use it', html: `<ul class="rn-tablist">
         <li><b>Home</b> Your race at a glance: the race clock, the next cut-offs, Safety Officers on post, and big buttons to the map, cut-offs and Send my location.</li>
         <li><b>Map</b> A big topo map of your race: its course, aid stations with cut-offs, and Safety Officer posts (SO). Tap <b>◎</b> to find yourself: under the profile you'll see your race km, the next aid station and cut-off, and the way out. Drag the profile or tap the course to see any point.</li>
-        <li><b>Runners</b> On the map: find a bib, the Runner watch (not moving, off the course, late, tracker quiet), the field by section and the front and tail of each race. Show centres the map on a runner.</li>
+        <li><b>Runners</b> On the map: find a bib, the Runner watch (not moving, off the course, late, tracker quiet), the field by section and the front and tail of each race. Show centres the map on a runner. Tap any runner for how far they are from you, the climb between you, when they'll reach you and their age category.</li>
         <li><b>Where</b> Tap <b>Where am I?</b> for your course km, between which aid stations, and how far off the course you are (and which way the course is). No GPS? Type the km.</li>
-        <li><b>Send</b> <b>Send my location</b> or <b>Urgent: casualty here</b> opens WhatsApp with the km, position, map link and nearest vehicle access ready. Add a note, pick the Safety Officer and Rescue Team group (or Event HQ), send.</li>
+        <li><b>Send</b> <b>Send my location</b> or <b>Urgent: casualty here</b> opens WhatsApp with the km, position, map link and nearest vehicle access ready. Add a note, pick the Safety Officer and Rescue Team group (or Event HQ), send. While Race Control is taking them, the same card can put your location or an urgent casualty straight onto the Control board, and tells you when it's acknowledged.</li>
+        <li><b>Control map</b> At the bottom of the Where tab, <b>Show me on the Control map</b> shares your position with Race Control once you have the team code from the briefing.</li>
         <li><b>Way out</b> The nearest vehicle access and how long it takes on foot, and the aid stations either side.</li>
         <li><b>Race</b> Pick your race (it stays picked): every aid station with the first runner's expected time and the cut-off, and when you'll reach each one at your current pace (or from a target time). Handy for sweeps.</li>
         <li><b>Trail</b> Turn on <b>Keep updating</b> to follow your position and draw the trail you've walked.</li>
@@ -746,6 +839,12 @@
   let rz = null; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { if (map) map.invalidateSize(); }, 200); });
   $('fdLocate').addEventListener('click', locate);
   $('fdFollow').addEventListener('change', e => follow(e.target.checked));
+  // The same switch on the Map tab, and Keep screen on (where the phone can: the map stays lit while the app is open).
+  if ($('fdFollow2')) $('fdFollow2').addEventListener('change', e => { $('fdFollow').checked = e.target.checked; follow(e.target.checked); if (e.target.checked) msg('Keep updating is on: your dot follows you and your trail is drawn.'); });
+  if (LV && LV.awake.supported && $('fdAwake')) {
+    $('fdAwakeL').hidden = false; $('fdAwake').checked = LV.awake.on();
+    $('fdAwake').addEventListener('change', e => { LV.awake.set(e.target.checked); msg(e.target.checked ? 'The screen stays on while the app is open. It uses more battery.' : 'The screen will sleep as usual.'); });
+  }
   // The km box: the picked race's km, with a comma or a point for the decimals. A bad km takes the old location
   // away (and with it the Send buttons), so it can't be sent by mistake.
   $('fdKmForm').addEventListener('submit', e => {
@@ -757,12 +856,14 @@
     const bad = isNaN(km) ? 'That isn\'t a km. Type a number, like 12.5.' : km > len ? `${what} is ${one(len)} km. Type a km from 0 to ${one(len)}.` : '';
     if (!bad) { msg(''); fromKm(km); return; }
     $('fdKm').classList.add('rc-flash'); setTimeout(() => $('fdKm').classList.remove('rc-flash'), 2600);
-    here = null; mapNow = null; keep(); sendLinks();
+    here = null; mapNow = null; keep(); sendLinks(); tellMe();
     $('fdOut').hidden = true; if (layer) layer.clearLayers(); if (profile) profile.setHere(null); home();
     msg(bad + ' No location to send yet.', true);
   });
   // The Send buttons do nothing without a location, and rebuild the message as they're tapped (for the fix age).
   ['fdSend', 'fdUrgent'].forEach(id => $(id).addEventListener('click', e => { if (!here) e.preventDefault(); else sendLinks(); }));
+  $('fdRcSend').onclick = () => rcSend(false);
+  $('fdRcUrgent').onclick = () => { if (confirm('Put an URGENT casualty at your location on the Control board?')) rcSend(true); };
   $('fdNote').value = rstore.get('note', '');
   $('fdNote').addEventListener('input', () => { rstore.set('note', $('fdNote').value); sendLinks(); });
   sendLinks(); restore();

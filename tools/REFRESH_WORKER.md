@@ -42,6 +42,8 @@ Setup takes about 15 minutes.
 2. Choose **Every 15 minutes**, or type `*/15 * * * *`.
 3. Click **Add** (or **Save**).
 
+For checkpoint alerts on the phones (build 104), add a second trigger that runs every minute, `* * * * *`. See [LIVE.md](LIVE.md).
+
 ## 5. Check it and send the address
 
 1. The Worker's address is shown at the top, for example `https://gpt100-refresh.yourname.workers.dev`.

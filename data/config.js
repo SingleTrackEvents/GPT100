@@ -109,6 +109,9 @@ window.GPT100_CONFIG = {
   // ?gps=<full address of the folder> (timing.json in the same folder is picked up), or ?chip=<address of the list>.
   // credit: the timing and tracking provider, named in the intros, next to the Live tracking button and in the tracking status.
   // results: the timing team's official results page, linked from the runner app's Track tab (blank: no link).
+  // ageGroups (optional): the event's age groups as [from, to, name] rows, for the age category shown beside each
+  // runner once the timing list has an Age Group column (tools/TIMING.md). Left out, the GPT100's own groups are used:
+  // under 24 (Youth), 24 to 39 (Open), 40 to 49 (Masters), 50 to 59, 60 to 69, 70 and over (Legends).
   // Where a medical plan place really is, when the plan pins it somewhere else, by the plan's place name.
   // Everyone at the place moves (medics, vehicles, Safety Officers), on every map and in every time.
   planPlaces: { 'Jimmy Creek': { lat: -37.37167, lon: 142.50391 } }, // Jimmy Creek Camp, not the road crossing

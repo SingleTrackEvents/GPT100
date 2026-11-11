@@ -23,6 +23,9 @@
   const incidents = new Map(), units = new Map();
   let log = [], since = 0, lastOk = 0, lastErr = '', built = false, shown = false, timer = null, map = null, layer = null, editing = null, draft = null, orig = null, held = false;
   const closing = new Map(); // incident id: outcome picked in its open Close box
+  // The line to the phones (tools/LIVE.md), whole in every answer from the Worker: the notices showing, whether help
+  // requests from the apps are being taken, the team code and positions of the field phones, and the phones' fault reports.
+  let live = null, liveKey = '', faults = null, heard = new Set(), noticeDraft = { text: '', aud: 'all', level: 'info', mins: '180' };
   // The queue is shared by every tab on the device, so it's read fresh from storage before each change. Bad or blocked storage falls back to memory.
   // Once a write fails (storage full or blocked) the queue stays in memory, so an older copy in storage can't replace it, and the board says so.
   let mem = [], memOnly = false;
@@ -90,7 +93,9 @@
       if (j.log.length) { const ids = new Set(log.map(l => l.id)); log = j.log.filter(l => !ids.has(l.id)).concat(log).sort((a, b) => b.id - a.id).slice(0, 500); }
       if (!readQ().length) log = log.filter(l => !l.pending);
       since = j.now - 3000; lastOk = now(); lastErr = '';
-      if (j.incidents.length || j.units.length || j.log.length) render(); else { tick(); status(); }
+      if (j.live) { live = j.live; live.now = j.now; }
+      if (j.incidents.length || j.units.length || j.log.length) render(); else { tick(); status(); renderLive(); renderMap(); }
+      alarm();
       reconcile(j.now);
     } catch (e) { lastErr = e.message; status(); if (e.status === 401 || e.status === 503) render(); }
   }
@@ -185,7 +190,7 @@
       <div class="rc-col rc-incs"><p id="rcStoreWarn" class="notice warn"${memOnly ? '' : ' hidden'}>This device won't save Race Control entries, so the ones waiting to send are only kept in this tab. Keep this tab open until they've sent.</p><div id="rcForm"></div><div id="rcOpen"></div><details class="rc-closed"><summary id="rcClosedSum">Closed</summary><div id="rcClosed"></div></details></div>
       <div class="rc-col rc-mid"><div class="rc-mapbox"><div id="rcMap"></div></div>
         <div class="rc-logbox"><h3>Radio log</h3><form id="rcLogForm" class="rc-logform"><input id="rcLogText" type="text" maxlength="500" placeholder="Add a log entry (Enter to save)"><button class="btn small" type="submit">Log</button></form><ol id="rcLog" class="rc-log"></ol></div></div>
-      <div class="rc-col rc-units"><h3>Units</h3><div id="rcUnits"></div>
+      <div class="rc-col rc-units"><div id="rcLive" class="rc-live"></div><h3>Units</h3><div id="rcUnits"></div>
         <form id="rcAddUnit" class="rc-logform"><input id="rcUnitName" type="text" maxlength="40" placeholder="Add a unit, e.g. Sweep 3"><button class="btn small" type="submit">Add</button></form>
         <div id="rcWatch" class="rc-watch"></div></div>
     </div>`;
@@ -279,7 +284,89 @@
     $('rcClosed').innerHTML = closed.map(card).join('');
     $('rcClosedSum').textContent = `Closed (${closed.length})`;
     bindCards($('rcClosed'));
-    renderUnits(); renderLog(); renderMap(); tick(); status(); renderForm();
+    renderUnits(); renderLog(); renderMap(); tick(); status(); renderForm(); renderLive();
+  }
+  // ---------- the line to the phones ----------
+  // A help request from the runner or field app arrives as an incident marked needsAck: its card flashes and the board
+  // sounds until someone presses Acknowledge, which the sender's phone then shows. The Worker only takes them while
+  // this switch is on and a board has been open in the last 3 minutes, so they never go to an empty room.
+  const postLive = (path, body, done) => api(path, Object.assign({ who: who() }, body)).then(() => { lastErr = ''; if (done) done(); return sync(); }).catch(e => { lastErr = e.message; status(); renderLive(); });
+  const ageOf = t => { const m = mins(t, live && live.now ? live.now : now()); return m < 1 ? 'just now' : dur(m) + ' ago'; };
+  function renderLive() {
+    const el = $('rcLive'); if (!el || !live) return;
+    // Left alone while someone is typing in it or has a menu open.
+    const a = document.activeElement;
+    if (a && el.contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+    const key = JSON.stringify([live.help_on, live.field_code, live.notices, live.field.map(f => [f.id, f.name, f.km, Math.round((live.now - f.t) / 60000)]), live.faults, live.alerts, faults && faults.map(f => [f.sig, f.n]), noticeDraft]);
+    if (key === liveKey) return;
+    liveKey = key;
+    const N = live.notices || [], F = live.field || [], fa = live.faults || { n: 0 };
+    const audName = { all: 'Every phone', runner: 'Runners and crews', field: 'The field app' };
+    el.innerHTML = `<h3>Phones</h3>
+      <h4>Notice to the phones</h4>
+      <form id="rcNotice" class="rc-notice">
+        <textarea id="rcNoticeText" rows="2" maxlength="400" placeholder="e.g. Course change at Mt William: follow the pink tape to Jimmy Creek.">${esc(noticeDraft.text)}</textarea>
+        <div class="rc-notice-row"><select id="rcNoticeAud" aria-label="Who gets it">${Object.entries(audName).map(([k, l]) => `<option value="${k}"${noticeDraft.aud === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+          <select id="rcNoticeMins" aria-label="How long it shows">${[['60', 'for 1 hour'], ['180', 'for 3 hours'], ['720', 'for 12 hours'], ['0', 'until taken down']].map(([k, l]) => `<option value="${k}"${noticeDraft.mins === k ? ' selected' : ''}>${l}</option>`).join('')}</select></div>
+        <div class="rc-notice-row"><label class="rc-check"><input type="checkbox" id="rcNoticeAlert"${noticeDraft.level === 'alert' ? ' checked' : ''}> Important (red)</label><button class="btn small primary" type="submit">Send notice</button></div>
+      </form>
+      ${N.length ? N.map(n => `<div class="rc-noticed${n.level === 'alert' ? ' alert' : ''}"><span><b>${hm(n.t)} · ${esc(audName[n.aud] || 'Every phone')}${n.until ? ' · until ' + hm(n.until) : ''}</b>${esc(n.text)}</span><button class="btn small" type="button" data-clear="${esc(n.id)}">Take down</button></div>`).join('') : '<p class="muted rc-small">No notice is showing on the phones.</p>'}
+      <p class="muted rc-small">${live.alerts ? `${live.alerts} phone${live.alerts === 1 ? ' has' : 's have'} alerts on and will be notified.` : 'It shows as a banner in the apps within a minute.'}</p>
+      <h4>Help requests from the apps</h4>
+      <div class="rc-switch"><span>${live.help_on ? '<b>On.</b> The runner and field apps offer "Tell Race Control" while a board is open. Someone has to be watching this board.' : '<b>Off.</b> The apps only offer Call 000 and Call race medical.'}</span>
+        <button class="btn small${live.help_on ? '' : ' primary'}" type="button" id="rcHelpOn">${live.help_on ? 'Turn off' : 'Turn on'}</button></div>
+      <h4>Field phones on the map</h4>
+      <form id="rcCode" class="rc-logform"><input id="rcCodeText" type="text" maxlength="20" autocomplete="off" value="${esc(live.field_code || '')}" placeholder="Team code, e.g. PEAKS26" aria-label="Team code"><button class="btn small" type="submit">${live.field_code ? 'Change' : 'Set'}</button></form>
+      <p class="muted rc-small">${live.field_code ? 'Give this code out at the briefing. A field phone with it, and Share my position on, shows on the map as a blue tag.' : 'Set a team code to let Safety Officers and sweeps share their position from the field app. Clear it to stop.'}</p>
+      ${F.length ? F.map(f => `<div class="row"><span><b>${esc(f.name)}</b><span class="sub">${f.km != null ? 'km ' + (+f.km).toFixed(1) + (f.offM > 150 ? ', ' + Math.round(f.offM / 10) * 10 + ' m off the course' : '') : 'off the course'} · ${ageOf(f.t)}${f.acc > 100 ? ' · GPS ±' + Math.round(f.acc) + ' m' : ''}</span></span><button class="btn small" type="button" data-phone="${esc(f.id)}">Show</button></div>`).join('') : ''}
+      <h4>App faults</h4>
+      ${fa.n ? `<div class="rc-switch"><span><b>${fa.n} kind${fa.n === 1 ? '' : 's'} of fault</b> reported by phones (${fa.hits} in all), the last ${ageOf(fa.last)}.</span><button class="btn small" type="button" id="rcFaults">${faults ? 'Hide' : 'Show'}</button></div>` : '<p class="muted rc-small">No faults reported by the phones.</p>'}
+      ${faults && fa.n ? faults.map(f => `<div class="rc-fault"><b>${esc(f.app)} app, build ${esc(f.build)}: ${esc(f.msg)}</b><span>${esc(f.src)}:${f.line} · ${f.n} time${f.n === 1 ? '' : 's'}, first ${dhm(f.first)}, last ${dhm(f.last)}</span><span>${esc(f.ua || '')}</span></div>`).join('') + '<button class="btn small" type="button" id="rcFaultsClear">Clear the list</button>' : ''}`;
+    const keep = () => { noticeDraft = { text: $('rcNoticeText').value, aud: $('rcNoticeAud').value, mins: $('rcNoticeMins').value, level: $('rcNoticeAlert').checked ? 'alert' : 'info' }; };
+    ['rcNoticeText', 'rcNoticeAud', 'rcNoticeMins', 'rcNoticeAlert'].forEach(k => $(k).addEventListener('input', keep));
+    $('rcNotice').addEventListener('submit', e => {
+      e.preventDefault(); keep();
+      if (!noticeDraft.text.trim()) return flash($('rcNoticeText'));
+      if (!needName()) return;
+      const d = noticeDraft; noticeDraft = Object.assign({}, d, { text: '' }); document.activeElement && document.activeElement.blur();
+      postLive('/rc/notice', { text: d.text.trim(), aud: d.aud, level: d.level, mins: +d.mins });
+    });
+    el.querySelectorAll('[data-clear]').forEach(b => b.addEventListener('click', () => { if (needName()) postLive('/rc/notice', { id: b.dataset.clear, clear: true }); }));
+    $('rcHelpOn').addEventListener('click', () => { if (needName()) postLive('/rc/settings', { patch: { help_on: !live.help_on } }); });
+    $('rcCode').addEventListener('submit', e => {
+      e.preventDefault();
+      const v = $('rcCodeText').value.trim();
+      if (v && !/^[A-Za-z0-9-]{4,20}$/.test(v)) { $('rcCodeText').value = ''; $('rcCodeText').placeholder = '4 to 20 letters or numbers'; return flash($('rcCodeText')); }
+      if (!needName()) return;
+      document.activeElement && document.activeElement.blur();
+      postLive('/rc/settings', { patch: { field_code: v } });
+    });
+    el.querySelectorAll('[data-phone]').forEach(b => b.addEventListener('click', () => { const f = F.find(x => x.id === b.dataset.phone); if (f && map) { map.setView([f.lat, f.lon], Math.max(map.getZoom(), 14)); $('rcMap').scrollIntoView({ behavior: 'smooth', block: 'center' }); } }));
+    if ($('rcFaults')) $('rcFaults').addEventListener('click', () => { if (faults) { faults = null; renderLive(); } else api('/rc/faults').then(j => { faults = j.faults || []; renderLive(); }).catch(e => { lastErr = e.message; status(); }); });
+    if ($('rcFaultsClear')) $('rcFaultsClear').addEventListener('click', () => { if (needName() && confirm('Clear the fault reports? Do this once they\'ve been looked at.')) postLive('/rc/faults', { clear: true }, () => { faults = null; }); });
+  }
+  // The nearest field phone to an incident, along the course where both are on it.
+  function nearPhone(i) {
+    if (!live || !live.field || !live.field.length || i.status === 'closed') return '';
+    const at = i.lat != null ? [i.lat, i.lon] : i.km != null ? (p => [p[0], p[1]])(courseOf(i).route[courseOf(i).idxAtKm(+i.km)]) : null;
+    if (!at) return '';
+    const best = live.field.filter(f => (live.now || now()) - f.t < 30 * 60000).map(f => ({ f, along: i.km != null && f.km != null && (f.course || G.id) === (i.course || G.id) && !(f.offM > 300) ? Math.abs(f.km - i.km) * 1000 : null, m: G.metres(at, [f.lat, f.lon]) }))
+      .sort((a, b) => (a.along != null ? a.along : a.m * 1.4) - (b.along != null ? b.along : b.m * 1.4))[0];
+    if (!best) return '';
+    const d = best.along != null ? best.along : best.m, far = d >= 950 ? (d / 1000).toFixed(1) + ' km' : Math.round(d / 10) * 10 + ' m';
+    return `<p class="trk-bib">Nearest field phone: <b>${esc(best.f.name)}</b>, ${far} ${best.along != null ? 'along the course' : 'in a straight line'} (position ${ageOf(best.f.t)}).</p>`;
+  }
+  // A new help request sounds the board (three short tones), once for each.
+  function alarm() {
+    const fresh = [...incidents.values()].filter(i => i.needsAck && i.status !== 'closed' && !heard.has(i.id));
+    if (!fresh.length) return;
+    fresh.forEach(i => heard.add(i.id));
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      const ac = new AC();
+      [0, 0.28, 0.56].forEach(t => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 880; o.connect(g); g.connect(ac.destination); g.gain.setValueAtTime(0.25, ac.currentTime + t); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + t + 0.2); o.start(ac.currentTime + t); o.stop(ac.currentTime + t + 0.22); });
+      setTimeout(() => ac.close().catch(() => { }), 1500);
+    } catch (e) { }
   }
   let pressing = false;
   addEventListener('pointerdown', () => { pressing = true; }, true);
@@ -289,15 +376,17 @@
   function card(i) {
     const t = i.times || {}, sev = SEV[i.severity] || ['Unrated', '#777'], e = eta(i), closed = i.status === 'closed';
     const next = STEPS.find(([k]) => !t[k]);
-    const loc = i.km != null ? `km ${(+i.km).toFixed(1)} <span>${esc(placeAt(+i.km))}</span>` : esc(i.where || 'Location not given');
-    return `<div class="rc-card${closed ? ' closed' : ''}" data-id="${i.id}" style="--sev:${sev[1]};--sev-ink:${sev[2] || '#fff'}">
+    const loc = i.km != null ? `km ${(+i.km).toFixed(1)} <span>${esc(placeAt(+i.km))}</span>` : i.lat != null ? `<a href="https://maps.google.com/?q=${(+i.lat).toFixed(5)},${(+i.lon).toFixed(5)}" target="_blank" rel="noopener">${(+i.lat).toFixed(5)}, ${(+i.lon).toFixed(5)}</a>` : esc(i.where || 'Location not given');
+    const app = i.source === 'runner' || i.source === 'field' ? `<p class="rc-from${i.needsAck && !closed ? ' new' : ''}">${i.needsAck && !closed ? '<b>New help request</b> from' : 'From'} the ${i.source} app${i.source === 'field' && /^Field app: ./.test(i.reporter || '') ? ' (' + esc(i.reporter.slice(11)) + ')' : ''}${i.acc ? `, GPS ±${Math.round(i.acc)} m` : ''}${i.w3w ? ` · ///${esc(i.w3w)}` : ''}${i.ackAt ? ` · acknowledged ${hm(i.ackAt)}${i.ackBy ? ' by ' + esc(i.ackBy) : ''}` : ''}</p>` : '';
+    return `<div class="rc-card${closed ? ' closed' : ''}${i.needsAck && !closed ? ' rc-needsack' : ''}" data-id="${i.id}" style="--sev:${sev[1]};--sev-ink:${sev[2] || '#fff'}">
       <div class="rc-card-top"><b>#${i.num || '…'}</b><span class="rc-sev">${sev[0]}</span><span class="rc-loc">${loc}</span>
         <span class="rc-timer" data-t0="${t.call || i.created}" data-due="${t.dispatched && e != null && !t.onScene ? t.dispatched + e * 60000 : ''}"></span></div>
       <p class="rc-what">${esc(i.desc || '')}${i.bib || i.name ? ` <span class="rc-runner">${esc([i.bib ? 'Bib ' + i.bib : '', i.name, i.race].filter(Boolean).join(', '))}</span>` : ''}</p>
-      ${liveBib(i)}
+      ${app}${liveBib(i)}${nearPhone(i)}
       <p class="rc-times">${[['call', 'Call'], ['dispatched', 'Sent'], ['onScene', 'On scene'], ['leaving', 'Left'], ['closed', 'Closed']].filter(([k]) => t[k]).map(([k, l]) => `${l} <b>${hm(t[k])}</b>`).join(' · ')}
         ${i.unit ? ` · <b>${esc(unitLabel(i.unit))}</b>` : ''}${closed ? '' : e != null ? ` · ETA ${dur(e)}` : i.unit && !t.onScene ? ' · ETA unknown' : ''}${i.outcome ? ` · ${esc(i.outcome)}` : ''}</p>
       ${closed ? '<div class="rc-actions"><button class="btn small" data-act="reopen" type="button">Reopen</button></div>' : `<div class="rc-actions">
+        ${i.needsAck ? '<button class="btn small primary rc-ack" data-act="ack" type="button">Acknowledge</button>' : ''}
         ${next ? `<button class="btn small primary" data-step="${next[0]}" type="button">${next[1]}</button>` : ''}
         <button class="btn small" data-act="close" type="button">Close</button>
         <button class="btn small" data-act="edit" type="button">Edit</button>
@@ -322,6 +411,8 @@
       el.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => {
         const a = b.dataset.act, i = incidents.get(id);
         if (a === 'edit') openForm(i);
+        // The sender's phone shows "Race Control has your message" from this.
+        if (a === 'ack' && needName()) patchIncident(id, { needsAck: false, ackAt: now(), ackBy: who() }, 'Acknowledged (the phone that sent it is told)');
         if (a === 'close' && needName()) { closing.set(id, closing.get(id) || OUTCOMES[0]); render(); }
         if (a === 'keep') { closing.delete(id); render(); }
         if (a === 'closeit') closeIncident(i, sel.value);
@@ -406,6 +497,12 @@
       const sev = SEV[i.severity] || ['', '#777'];
       L.marker(ll, { icon: L.divIcon({ className: '', html: `<div class="rc-pin" style="background:${sev[1]};color:${sev[2] || '#fff'}">${i.num || '…'}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] }) })
         .bindTooltip(`#${i.num || '…'} ${esc(i.desc || '')}`).on('click', () => { const el = document.querySelector(`.rc-card[data-id="${i.id}"]`); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }).addTo(layer);
+    });
+    // Field phones sharing their position (blue tags; pale once the position is over 15 minutes old).
+    ((live && live.field) || []).forEach(f => {
+      const old = (live.now || now()) - f.t > 15 * 60000;
+      L.marker([f.lat, f.lon], { zIndexOffset: 300, icon: L.divIcon({ className: '', html: `<div class="rc-phone${old ? ' old' : ''}">${esc(f.name)}</div>`, iconSize: [0, 0], iconAnchor: [0, 9] }) })
+        .bindPopup(`<b>${esc(f.name)}</b> · field phone<br>${f.km != null ? 'km ' + (+f.km).toFixed(1) + '<br>' : ''}Position ${ageOf(f.t)}${f.acc ? ', GPS ±' + Math.round(f.acc) + ' m' : ''}`).addTo(layer);
     });
   }
   function focusMarker() { }
