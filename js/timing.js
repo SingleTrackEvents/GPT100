@@ -14,7 +14,10 @@
   } catch (e) { }
   src = src || T.chip || '';
   if (!src) { window.GPTTiming = null; return; }
-  const URL_ = /^https?:\/\//.test(src) ? src : ((C.weather && C.weather.refreshUrl) || '').replace(/\/$/, '') + '/timing/';
+  // The Worker that relays the list. A rehearsal can point at a local one: ?api=http://127.0.0.1:8787 (js/live.js).
+  let WORKER = ((C.weather && C.weather.refreshUrl) || '').replace(/\/$/, '');
+  try { if (window.GPTLive && new URLSearchParams(location.search).get('api') && GPTLive.base()) WORKER = GPTLive.base(); } catch (e) { }
+  const URL_ = /^https?:\/\//.test(src) ? src : WORKER + '/timing/';
   // Seconds between reads of the feed: at least 15 through the relay (RaceResult caches it for 10 to 30 s); a feed read
   // straight from an address of our own (the demo, a rehearsal folder) can go faster.
   const EVERY = Math.max(/^https?:\/\//.test(src) ? 2 : 15, +T.chipEvery || 30);

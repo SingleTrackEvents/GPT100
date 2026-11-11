@@ -392,7 +392,7 @@
   // The phone apps, through the Worker's relay, take the end of the positions file first (the last few fixes of
   // everyone who is moving), so the map fills in seconds on a weak signal; the whole file follows in the background
   // for the history (trails, who has stopped, trackers that went quiet earlier). S.partial says it's still to come.
-  const TAIL = 150000, PHONE = !!document.querySelector('.rn-nav');
+  const TAIL = 150000, PHONE = !!(window.GPTLive && /^(runner|field)$/.test(GPTLive.app));
   async function rest(F, tries) {
     try {
       const res = await fetch(F.base + 'data.lst', { cache: 'no-store' });

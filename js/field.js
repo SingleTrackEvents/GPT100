@@ -211,7 +211,7 @@
     if (window.GPTHeading) GPTHeading.gps(c);
     addTrail(c.latitude, c.longitude, c.accuracy);
     place(c.latitude, c.longitude, { acc: c.accuracy, alt: c.altitude, t: p.timestamp });
-    // On the Control board's map, if this phone is set to show there (at most every 30 seconds).
+    // On the Control board's map, if this phone is set to show there (at most once a minute).
     if (LV && here && LV.field.cfg().on) LV.field.share({ lat: +c.latitude.toFixed(5), lon: +c.longitude.toFixed(5), acc: Math.round(c.accuracy), t: p.timestamp, km: Math.round(here.r.km * 10) / 10, course: here.E.id, offM: Math.round(here.offM) });
   }
   function gpsError(e) {
@@ -513,7 +513,7 @@
 
   // ---------- show this phone on the Control map (js/live.js) ----------
   // A call sign and the team code Race Control gives out. Then every GPS fix (Keep updating) goes to the board, at
-  // most every 30 seconds, while the app is open. The card only shows once Race Control has set a code.
+  // most once a minute, while the app is open. The card only shows once Race Control has set a code.
   function shareDraw() {
     const box = $('fdShare'); if (!box || !LV) return;
     const c = LV.field.cfg(), avail = LV.field.available(), body = $('fdShareBody');
@@ -525,7 +525,7 @@
       body.dataset.k = key;
       body.innerHTML = `<p class="lv-line ok">Sharing as <b>${esc(c.name)}</b>. ${esc(LV.field.status() || 'Your position goes with the next GPS fix.')}</p>
         ${watchId == null ? '<p class="lv-line warn">Keep updating is off, so Race Control only gets your position when you tap Where am I? <button type="button" class="fd-linkbtn" id="fdShareFollow">Turn it on</button></p>' : ''}
-        <p class="fd-hint">Race Control sees this phone on its map, about every 30 seconds while the app is open and on screen. It stops when the app is closed or the phone sleeps.</p>
+        <p class="fd-hint">Race Control sees this phone on its map, about once a minute while the app is open and on screen. It stops when the app is closed or the phone sleeps.</p>
         <button type="button" class="btn" id="fdShareStop">Stop sharing</button>`;
       $('fdShareStop').onclick = () => { LV.field.set({ on: false }); shareDraw(); };
       if ($('fdShareFollow')) $('fdShareFollow').onclick = () => { $('fdFollow').checked = true; follow(true); };
@@ -828,7 +828,8 @@
         <li><b>Map</b> A big topo map of your race: its course, aid stations with cut-offs, and Safety Officer posts (SO). Tap <b>◎</b> to find yourself: under the profile you'll see your race km, the next aid station and cut-off, and the way out. Drag the profile or tap the course to see any point.</li>
         <li><b>Runners</b> On the map: find a bib, the Runner watch (not moving, off the course, late, tracker quiet), the field by section and the front and tail of each race. Show centres the map on a runner. Tap any runner for how far they are from you, the climb between you, when they'll reach you and their age category.</li>
         <li><b>Where</b> Tap <b>Where am I?</b> for your course km, between which aid stations, and how far off the course you are (and which way the course is). No GPS? Type the km.</li>
-        <li><b>Send</b> <b>Send my location</b> or <b>Urgent: casualty here</b> opens WhatsApp with the km, position, map link and nearest vehicle access ready. Add a note, pick the Safety Officer and Rescue Team group (or Event HQ), send.</li>
+        <li><b>Send</b> <b>Send my location</b> or <b>Urgent: casualty here</b> opens WhatsApp with the km, position, map link and nearest vehicle access ready. Add a note, pick the Safety Officer and Rescue Team group (or Event HQ), send. While Race Control is taking them, the same card can put your location or an urgent casualty straight onto the Control board, and tells you when it's acknowledged.</li>
+        <li><b>Control map</b> At the bottom of the Where tab, <b>Show me on the Control map</b> shares your position with Race Control once you have the team code from the briefing.</li>
         <li><b>Way out</b> The nearest vehicle access and how long it takes on foot, and the aid stations either side.</li>
         <li><b>Race</b> Pick your race (it stays picked): every aid station with the first runner's expected time and the cut-off, and when you'll reach each one at your current pace (or from a target time). Handy for sweeps.</li>
         <li><b>Trail</b> Turn on <b>Keep updating</b> to follow your position and draw the trail you've walked.</li>

@@ -230,7 +230,7 @@
     if (on && (!E() || !navigator.geolocation)) { on = false; msg(!E() ? 'Follow me needs this race\'s map, which isn\'t in the app yet.' : 'This phone can\'t share its location with the app.', true); }
     if (on) {
       if (window.GPTHeading) GPTHeading.start();
-      beep(true);   // (the phone only lets the app make a sound later if it was set up from a tap)
+      if (!quiet) beep(true);   // (the phone only lets the app make a sound later if it was set up from a tap)
       watchId = navigator.geolocation.watchPosition(p => {
         const b = locBtn(); if (b) { b.classList.remove('busy'); b.classList.add('on'); }
         if (window.GPTHeading) GPTHeading.gps(p.coords);
@@ -550,6 +550,7 @@
     if ($('rnCrewFromRow')) $('rnCrewFromRow').hidden = !drivable.length || p == null;
     // "Leave by" for a crew point: the runner's expected time, less the drive, less a margin to park and walk in.
     const leave = (a, x, eta) => {
+      if (a && a === x && eta) return { d: { min: 0, km: 0 }, by: eta, late: false, arrive: now, here: true };   // already there
       const d = a && a !== x ? drive(a, x) : null; if (!d || !eta) return null;
       const by = eta - (d.min + AHEAD) * 60e3;
       return { d, by, late: by < now, arrive: now + d.min * 60e3 };
@@ -568,7 +569,7 @@
         if (L) {
           const first = !nextUp;
           if (first) nextUp = { x, eta, L, a: lastDrive };
-          drv = `<div class="rn-drive${first && L.late ? ' late' : ''}">Drive from ${esc(lastDrive.name)}: about ${L.d.min} min (${one(L.d.km)} km). <b>${first && L.late ? 'Leave now' : 'Leave by ' + when(new Date(L.by))}</b></div>`;
+          drv = L.here ? '<div class="rn-drive"><b>You\'re here.</b></div>' : `<div class="rn-drive${first && L.late ? ' late' : ''}">Drive from ${esc(lastDrive.name)}: about ${L.d.min} min (${one(L.d.km)} km). <b>${first && L.late ? 'Leave now' : 'Leave by ' + when(new Date(L.by))}</b></div>`;
         }
         lastDrive = x;
       }
@@ -586,7 +587,9 @@
       if (crew && nextUp) {
         const { x, eta, L, a } = nextUp;
         nx.className = 'rn-crewnext' + (L.late ? ' late' : '');
-        nx.innerHTML = `<p class="rn-crewnext-h">Next crew point: <b>${esc(x.name)}</b></p>
+        nx.innerHTML = L.here ? `<p class="rn-crewnext-h">Next crew point: <b>${esc(x.name)}</b></p>
+          <p>Expected there about <b>${when(new Date(eta))}</b>${eta > now ? `, in ${dur(eta - now)}` : ''}.</p><p class="rn-crewnext-by"><b>You're here.</b></p>`
+          : `<p class="rn-crewnext-h">Next crew point: <b>${esc(x.name)}</b></p>
           <p>Expected there about <b>${when(new Date(eta))}</b>. The drive from ${esc(a.name)}${fromWhy && !store.get('crewFrom.' + KEY(), '') ? ` (${fromWhy})` : ''} is about <b>${L.d.min} min</b> (${one(L.d.km)} km).</p>
           <p class="rn-crewnext-by">${L.late ? `<b>Leave now.</b> Leaving now gets you there about ${when(new Date(L.arrive))}${L.arrive > eta ? ', after them' : `, ${dur(eta - L.arrive)} ahead of them`}.` : `<b>Leave by ${when(new Date(L.by))}</b> to be there ${AHEAD} minutes ahead of them.`}</p>
           <p class="fd-hint">Drive times are a guide from the road map: allow more for gravel, traffic at the trailheads and the walk in.</p>`;

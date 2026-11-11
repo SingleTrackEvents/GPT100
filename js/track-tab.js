@@ -220,7 +220,7 @@
   // order as Results (finishers by time, then by how far along), worked out once for each update of the feeds.
   let placeMemo = { at: -1, by: {} };
   function ranked(key) {
-    const tr = TR(), stamp = tr ? tr.state.updated || 0 : 0;
+    const tr = TR(), TC = window.GPTTiming, stamp = [tr ? tr.state.updated || 0 : 0, TC && TC.state ? TC.state.updated || 0 : 0, Math.floor(Date.now() / 30e3)].join();
     if (placeMemo.at !== stamp) placeMemo = { at: stamp, by: {} };
     return placeMemo.by[key] || (placeMemo.by[key] = order(key, '', '').filter(o => o.c.status === 'finished' || (!o.c.status && o.r.pos)));
   }

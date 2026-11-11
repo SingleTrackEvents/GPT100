@@ -146,15 +146,15 @@
     status: () => shareMsg,
     available: () => !!(base() && S.field && S.field.on),
     async check(code) { try { const x = await call('/field/check', { code }); return x.ok ? '' : x.j.error || 'That team code isn\'t right'; } catch (e) { return 'No signal: the code will be checked when there is.'; } },
-    // fix: { lat, lon, acc, t, km, course, offM }. At most one every 30 seconds.
+    // fix: { lat, lon, acc, t, km, course, offM }. At most one a minute (the Worker's free database counts every write).
     async share(fix) {
       const c = field.cfg();
-      if (!c.on || !c.name || !c.code || !fix || !base() || Date.now() - lastShare < 30000) return;
+      if (!c.on || !c.name || !c.code || !fix || !base() || Date.now() - lastShare < 55000) return;
       lastShare = Date.now();
       try {
         const x = await call('/field/pos', Object.assign({ code: c.code, id: c.id, name: c.name }, fix));
         shareMsg = x.ok ? 'Race Control has your position, ' + tf.format(Date.now()) + '.' : x.status === 401 ? 'The team code isn\'t right: check it with Race Control.' : x.status === 409 ? 'Race Control hasn\'t turned on position sharing.' : 'Couldn\'t send your position. It will try again.';
-      } catch (e) { shareMsg = 'No signal: your position will send when there is.'; lastShare = Date.now() - 20000; }
+      } catch (e) { shareMsg = 'No signal: your position will send when there is.'; lastShare = Date.now() - 40000; }
       tell();
     }
   };
