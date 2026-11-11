@@ -49,6 +49,14 @@ for (let i = 0; i < rows.length; i++) {
   pts[0].kind = 'start'; pts[pts.length - 1].kind = 'finish';
   tables[id] = pts;
 }
+// Non-crewed races, whatever the sheet's crew column says: no crew access at any point but the finish. Stage 4 and the
+// GPT33k (one table) are non-crewed (gpt100.com.au/crew and /aid-stations, confirmed by the organisers, November 2026).
+const NON_CREWED = ['s4'];
+NON_CREWED.forEach(id => { const P = tables[id]; if (P) P.forEach((p, i) => { if (i < P.length - 1) p.crew = 'no'; }); });
+// Crew access the website has right and the sheet has wrong, by table and point name. Stage 3: crews have full access
+// at Jimmy Creek (gpt100.com.au/aid-stations, confirmed by the organisers, November 2026).
+const CREW_FIX = { s3: { 'Jimmy Creek Rd': 'yes' } };
+Object.entries(CREW_FIX).forEach(([id, fix]) => (tables[id] || []).forEach(p => { if (fix[p.name]) p.crew = fix[p.name]; }));
 const missing = Object.values(STAGES).filter(id => !tables[id]);
 if (missing.length) { console.error('Not found in the sheet: ' + missing.join(', ')); process.exit(1); }
 
@@ -65,7 +73,7 @@ const RACES = [
 ];
 const STAGE_LABEL = { miler: 'Miler', s1: 'Stage 1', s2: 'Stage 2', s3: 'Stage 3', s4: 'Stage 4', '14k': '14k', '6k': '6k', '5k': '5k', '2k': '2k' };
 const out = { stages: {}, races: RACES };
-Object.entries(tables).forEach(([id, points]) => { out.stages[id] = { id, label: STAGE_LABEL[id], points }; });
+Object.entries(tables).forEach(([id, points]) => { out.stages[id] = Object.assign({ id, label: STAGE_LABEL[id] }, NON_CREWED.includes(id) ? { crewed: false } : {}, { points }); });
 
 fs.writeFileSync('data/races.js', `// Races for the runner app, from the GPT Course Details sheet (tools/import_races.mjs). Melbourne local time.
 // km, up and down are the official race figures; the app maps them onto the course line by aid station.
