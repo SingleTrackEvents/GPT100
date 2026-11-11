@@ -1,6 +1,7 @@
 // A stand-in for the GPS and timing providers, serving good, broken and hostile feeds for the crash tests
 // (run.js starts it). Open any app with ?gps=http://127.0.0.1:8766/<case>/ to see one: ok, garbage, empty, html,
-// err500, err404, weird, shapes, nolabels, errorobj, mid (400 runners), huge (1500 runners), slow.
+// err500, err404, weird, shapes, nolabels, errorobj, mid (400 runners), huge (1500 runners), slow, ghost (trackers
+// last heard days ago).
 // http://127.0.0.1:8766/<case>/init.txt | data.lst | data.php | timing.json
 // The case `live` is the good feed with a race that moves on when told to: GET /__step?n=2 gives the first two
 // runners a read at Halls Gap, n=3 also withdraws bib 1002, n=4 also finishes bib 1000 (for the alerts test).
@@ -61,6 +62,19 @@ const CASES = {
   errorobj: () => { const g = good(3, 2); return { init: g.init, data: g.data, timing: JSON.stringify({ error: 'The timing feed said 403' }) }; },
   huge: () => { const g = good(1500, 40); return { init: g.init, data: g.data, timing: JSON.stringify(Array.from({ length: 1500 }, (_, i) => ({ Bib: 1000 + i, Name: `Runner, Big${i}`, Contest: 'GPT100 Solo/Pairs', Gender: 'M', AgeGroup: '40-49', Start: hhmm(600), CopperMineTrack: hhmm(520), GARIN: hhmm(400) }))) }; },
   mid: () => { const g = good(400, 60); return { init: g.init, data: g.data, timing: JSON.stringify(Array.from({ length: 400 }, (_, i) => ({ Bib: 1000 + i, Name: `Runner, Mid${i}`, Contest: 'GPT100 Solo/Pairs', Gender: i % 2 ? 'M' : 'F', AgeGroup: '40-49', Start: hhmm(600), CopperMineTrack: hhmm(520), GARIN: hhmm(400) }))) }; },
+  // After the race: two trackers last heard at Halls Gap 52 hours ago (handed back there still switched on), one a stage
+  // race runner whose stage runs nowhere near Halls Gap, one a Miler runner, and one runner still out with a fresh fix.
+  // The timing list has no reads and no results for them, as it was days after the 2026 race. None of the old ones
+  // may be drawn as racing (the 2026 app marched them up the course "at their pace").
+  ghost: () => {
+    const hg = at(49.2), out = at(80), t = now(), old = t - 52 * 3600;
+    let data = '';
+    for (let k = 6; k >= 0; k--) data += line(2001, old - k * 25, hg[0], hg[1]) + '\n' + line(2002, old - k * 25, hg[0] + 0.0002, hg[1]) + '\n';
+    for (let k = 20; k >= 0; k--) { const p = at(80 - k * 0.15); data += line(2003, t - k * 120, p[0], p[1]) + '\n'; }
+    return { init: 'RACENAME:After the race\nLIVE:1\nGRABINTERVAL:15\n' + [2001, 2002, 2003].map(b => `COMPETITOR:${b}|20261106|080000|${b} Runner ${b}|R${b}|\n`).join(''), data,
+      timing: JSON.stringify([{ Bib: 2001, Name: 'Stage, Sam', Contest: 'GPT100 Stage Race Solo', Gender: 'F', Start: '', Finish: '' }, { Bib: 2002, Name: 'Miler, Mel', Contest: 'GPT100 Solo/Pairs', Gender: 'M', Start: '', Finish: '' },
+        { Bib: 2003, Name: 'Out, Olly', Contest: 'GPT100 Solo/Pairs', Gender: 'M', Start: '', Finish: '' }]) };
+  },
   slow: () => ({ slow: 25000, init: 'RACENAME:slow\nLIVE:1\n', data: '', timing: '[]' })
 };
 const cache = {};

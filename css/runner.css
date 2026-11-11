@@ -279,6 +279,7 @@
 .tk-pill.on { background: var(--blue); color: #fff; }
 .tk-pill.fin { background: var(--green); color: #fff; }
 .tk-pill.out { background: var(--muted); color: #fff; }
+.tk-pill.gone { background: var(--muted); color: #fff; }
 .tk-big { font: 400 40px/1 var(--head); margin: 10px 0 4px; }
 .tk-big small { font-size: 22px; color: var(--muted); }
 .tk-line { margin: 4px 0; }
