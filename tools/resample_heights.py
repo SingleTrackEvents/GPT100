@@ -27,7 +27,9 @@ How the heights are made:
 
 Then it brings the figures worked out from the heights up to date: total_ascent_m in data/course.js, and
 main_ascent_m in data/contingency.js when the stretch lies between its two aid stations. The race sheet's official
-climb in data/races.js is not touched. Run node tools/bump_version.mjs afterwards.
+climb in data/races.js is not touched: when the stretch's climb moves by more than a few metres, update the up and
+down of every point after it by hand, for each race that runs the stretch (done on 11 November 2026 for the Miler
+and Stage 3 from Jimmy Creek on). Run node tools/bump_version.mjs afterwards.
 """
 import json, math, os, re, sys, time, urllib.request
 
