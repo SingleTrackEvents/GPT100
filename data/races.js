@@ -2,9 +2,11 @@
 // km, up and down are the official race figures; the app maps them onto the course line by aid station.
 // Since 5 November 2026 the Miler and Stage 3 take the contingency from Mt William to Jimmy Creek: Stockyard Track is
 // off the course (no water point in its place), and km, up and down from Jimmy Creek on move by the measured
-// difference (1.6 km, -517 m up, -517 m down). Cut-offs are unchanged. The Miler's first-runner times from Jimmy
-// Creek Camp on are 32 min earlier than the sheet's: the 2026 winner ran Mt William to Jimmy Creek in 2 h 03 min on
-// the contingency, and the later legs as planned. Re-importing the sheet undoes this.
+// difference (1.6 km, -294 m up, -294 m down). The climb was -517 m until 11 November 2026: the contingency measured
+// 279 m up on its GPX's stepped heights and 502 m once they were re-sampled (tools/resample_heights.py), against
+// 796 m over the plateau. Cut-offs are unchanged. The Miler's first-runner times from Jimmy Creek Camp on are 32 min
+// earlier than the sheet's: the 2026 winner ran Mt William to Jimmy Creek in 2 h 03 min on the contingency, and the
+// later legs as planned. Re-importing the sheet undoes this.
 window.GPT_RACES = {
  "stages": {
   "miler": {
@@ -114,8 +116,8 @@ window.GPT_RACES = {
      "name": "Jimmy Creek Camp",
      "kind": "aid",
      "km": 108.3,
-     "up": 4608,
-     "down": 4548,
+     "up": 4831,
+     "down": 4771,
      "first": "2026-11-06T19:55",
      "cutoff": "2026-11-07T14:30",
      "drop": true,
@@ -125,8 +127,8 @@ window.GPT_RACES = {
      "name": "Yarram Gap Rd",
      "kind": "emergency",
      "km": 120.1,
-     "up": 5188,
-     "down": 5108,
+     "up": 5411,
+     "down": 5331,
      "first": "2026-11-06T21:38",
      "cutoff": "2026-11-07T18:30",
      "drop": false,
@@ -136,8 +138,8 @@ window.GPT_RACES = {
      "name": "Griffin Fireline",
      "kind": "aid",
      "km": 132.3,
-     "up": 5628,
-     "down": 5598,
+     "up": 5851,
+     "down": 5821,
      "first": "2026-11-06T23:21",
      "cutoff": "2026-11-07T22:15",
      "drop": true,
@@ -147,8 +149,8 @@ window.GPT_RACES = {
      "name": "Cassidys Gap Rd",
      "kind": "aid",
      "km": 143.6,
-     "up": 6078,
-     "down": 5968,
+     "up": 6301,
+     "down": 6191,
      "first": "2026-11-07T00:56",
      "cutoff": "2026-11-08T02:00",
      "drop": false,
@@ -158,8 +160,8 @@ window.GPT_RACES = {
      "name": "Bainggug car park",
      "kind": "aid",
      "km": 154.4,
-     "up": 6728,
-     "down": 6698,
+     "up": 6951,
+     "down": 6921,
      "first": "2026-11-07T02:51",
      "cutoff": "2026-11-08T06:30",
      "drop": false,
@@ -169,8 +171,8 @@ window.GPT_RACES = {
      "name": "Dunkeld",
      "kind": "finish",
      "km": 164.6,
-     "up": 7183,
-     "down": 7183,
+     "up": 7406,
+     "down": 7406,
      "first": "2026-11-07T04:15",
      "cutoff": "2026-11-08T10:00",
      "drop": true,
@@ -319,8 +321,8 @@ window.GPT_RACES = {
      "name": "Jimmy Creek Rd",
      "kind": "aid",
      "km": 21.7,
-     "up": 258,
-     "down": 883,
+     "up": 481,
+     "down": 1106,
      "first": "2026-11-07T07:55",
      "cutoff": "2026-11-07T12:00",
      "drop": false,
@@ -330,8 +332,8 @@ window.GPT_RACES = {
      "name": "Yarram Gap Rd",
      "kind": "emergency",
      "km": 33.5,
-     "up": 838,
-     "down": 1443,
+     "up": 1061,
+     "down": 1666,
      "first": "2026-11-07T08:45",
      "cutoff": "2026-11-07T15:00",
      "drop": false,
@@ -341,8 +343,8 @@ window.GPT_RACES = {
      "name": "Griffin Fireline",
      "kind": "finish",
      "km": 45.6,
-     "up": 1278,
-     "down": 1933,
+     "up": 1501,
+     "down": 2156,
      "first": "2026-11-07T09:40",
      "cutoff": "2026-11-07T18:00",
      "drop": true,
