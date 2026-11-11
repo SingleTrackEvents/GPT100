@@ -61,6 +61,38 @@ const only = process.argv[2] || '';
   }
 
   // ---------- G. GPS trouble ----------
+  // ---- trackers last heard days ago (the "ghost runners" of November 2026) must not be drawn as racing
+  if (!only || only === 'feeds' || only === 'stale') {
+    console.log('stale trackers');
+    for (const [path, phone] of [['runner.html', true], ['field.html', true], ['map.html', false]]) {
+      const { ctx, page, log } = await open(b, null, { phone, storage: SEEN });
+      await ctx.route(/workers\.dev|what3words/, r => r.abort());
+      await page.goto(BASE + path + '?gps=' + FEEDS + 'ghost/', { waitUntil: 'load' });
+      await page.waitForFunction(() => window.GPTTracking && GPTTracking.ready() && GPTTracking.byBib('2003') && GPTTracking.byBib('2003').pos && window.GPTTiming && GPTTiming.ready(), null, { timeout: 30000 }).catch(() => { });
+      await sleep(2500);
+      const r = await page.evaluate(() => { const f = b => { const q = GPTTracking.byBib(b), p = q && q.pos; return p ? { est: !!p.est, on: !!p.onCourse, away: p.away || '', h: Math.round(p.ageMs / 3600e3), late: !!(p.next && p.next.late) } : null; };
+        const w = GPTTracking.watch(), bibs = l => l.map(x => x.bib).join(); return { stage: f('2001'), miler: f('2002'), out: f('2003'), watch: [bibs(w.stopped), bibs(w.late), bibs(w.quiet), bibs(w.aid)].join('|') }; });
+      if (!r.stage || !r.miler || !r.out) { note(path + ' stale', 'the feed did not load: ' + JSON.stringify(r)); await ctx.close(); continue; }
+      if (r.stage.est || r.miler.est) note(path + ' stale', 'a tracker silent for 52 hours is still moved along the course at their pace: ' + JSON.stringify(r));
+      if (r.stage.on || !r.stage.away) note(path + ' stale', 'a stage runner\'s tracker at Halls Gap, off their stage, counts as on course: ' + JSON.stringify(r.stage));
+      if (r.out.est === undefined || !r.out.on) note(path + ' stale', 'the runner with a fresh fix is no longer on course: ' + JSON.stringify(r.out));
+      if (/2001/.test(r.watch)) note(path + ' stale', 'the stage runner\'s tracker at Halls Gap is on the Runner watch: ' + r.watch);
+      if (path === 'runner.html') {
+        await page.evaluate(() => document.querySelector('.rn-nav button[data-tab="map"]').click()); await sleep(1200);
+        await page.evaluate(() => { const x = document.querySelector('.tk-every-btn'); if (x && !x.classList.contains('on')) x.click(); }); await sleep(800);
+        const n = await page.evaluate(() => (document.querySelector('.tk-every-btn small') || {}).textContent || '0');
+        if (n !== '1') note('runner.html stale', 'Everyone on the map should be the one runner with a fresh fix, but shows ' + n);
+        await page.evaluate(() => document.querySelector('.rn-nav button[data-tab="track"]').click()); await sleep(600);
+        for (const [bib, want] of [['2001', /Not on the course yet|Off the course|No recent position/], ['2002', /No recent position/], ['2003', /On course/]]) {
+          await page.fill('#tkFind', bib); await sleep(500);
+          const t = await page.evaluate(() => document.getElementById('tkHits').innerText);
+          if (!want.test(t)) note('runner.html stale', `bib ${bib} reads "${t.replace(/\s+/g, ' ').slice(0, 120)}"`);
+        }
+      }
+      drain(log, path + ' stale');
+      await ctx.close();
+    }
+  }
   if (!only || only === 'gps') for (const [name, opts, pre] of [
     ['denied', {}, null],  // no permission granted: the browser refuses
     ['far away (Melbourne)', { geo: { latitude: -37.8136, longitude: 144.9631, accuracy: 20 } }, null],

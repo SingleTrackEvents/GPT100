@@ -29,7 +29,7 @@ One test at a time: `node tools/crashtest/run.js only inputs.js runner` (or run 
 | `inputs.js field` | The field app: the km box, the note, Where am I?, every race and stage with target times, the Runners sheet. |
 | `inputs.js runner` | The runner app: both modes, every race and stage, every tab, ◎, target times, all five Help languages, the Track search, follow, splits, Show on map, shared links. |
 | `inputs.js storage` | Every saved setting on the phone replaced with ten kinds of rubbish, then each app opened and every tab visited. |
-| `feeds-gps-clock.js feeds` | Each app against a good feed, garbage, empty files, an error page, server errors, a hostile feed (script in names, bibs that clash, positions in Sydney and at 0,0, times in the future, wrong types), other list shapes, and 1,500 runners. |
+| `feeds-gps-clock.js feeds` | Each app against a good feed, garbage, empty files, an error page, server errors, a hostile feed (script in names, bibs that clash, positions in Sydney and at 0,0, times in the future, wrong types), other list shapes, and 1,500 runners. Then trackers last heard days ago (`ghost`): none may be moved along the course or shown as racing. |
 | `feeds-gps-clock.js gps` | Location refused, far away, the other side of the world, poor accuracy, 2 km off the course, no location feature at all. |
 | `feeds-gps-clock.js clock` | The phone's clock set months before, on race morning, mid race, at the last cut-off, the day after and a year on, with and without the demo. |
 | `offline.js` | Opens one app with signal, cuts the network, then opens and uses every app. |
@@ -53,6 +53,8 @@ About 300 page loads, 500 scripted inputs and 4,200 random actions across the te
 
 - **Runner app, 6k, 5k and 2k:** ◎ (Where am I?) and Find my 3 words threw an error: the map said nothing and the Help tab stayed on "Finding you…" with no words or numbers. Those courses had no stored what3words lookup, in the app since 24 October 2026, so through race weekend (confirmed on the untouched build 102). They now use the stored words of the GPT100 or 14k where they share track, and always give the position as numbers. The Call 000 and Call race medical buttons were not affected.
 - **Runner app, Track tab:** a damaged saved follow list (an object where a list was expected) stopped the whole tab from starting. Saved settings of the wrong shape are now ignored.
+
+- **After the race (build 106):** trackers handed back at Halls Gap still switched on, with the timing list cleared, were drawn as runners on the course for days, each moved along "at their pace". Reported from a phone three days after the race and reproduced from the provider's own files. Estimates now stop once a runner could no longer be on that leg, a tracker off its runner's race isn't counted as on course, and the runner app stops showing a race once it's over. The `ghost` feed keeps it fixed.
 
 No script injection got through from any input, link, saved setting or feed, and no feed (broken, hostile or huge) stopped an app from working. The update from build 102 to 103 was rehearsed on one address: a phone on 102 moved to 103 on its first open with signal, and every app then worked with no signal.
 

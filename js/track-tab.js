@@ -52,11 +52,27 @@
     return st ? st.t : o.S ? o.S.points[0].ft.getTime() : null;
   }
   const finishRead = o => o.c && o.c.status === 'finished' ? o.c.reads[o.c.reads.length - 1] : null;
+  // No longer shown as racing: a tracker that isn't on its runner's own race (back at the village, on the shuttle),
+  // nothing heard from the tracker or the chips for 12 hours, or their race's final cut-off more than 3 hours gone.
+  // After the 2026 race the trackers went back to Halls Gap still switched on, and the app drew their runners on the
+  // course for days. The cut-off rule is for the real race only: a rehearsal feed or the demo can run on any day.
+  const REHEARSAL = !!(window.GPTDemo && GPTDemo.on) || /[?&](gps|chip)=/.test(location.search);
+  function gone(o) {
+    const p = o.r.pos, now = Date.now();
+    if (!p || (o.c && o.c.status)) return '';
+    const heard = Math.max(p.t || 0, p.gpsT || 0, o.c && o.c.last ? o.c.last.t : 0);
+    const P = o.S && o.S.points, end = P && P[P.length - 1].ct;
+    if (!REHEARSAL && end && now > end.getTime() + 3 * 3600e3) return 'Race over';
+    if (p.away) return p.away === 'before' ? 'Not on the course yet' : 'Off the course';
+    return now - heard > 12 * 3600e3 ? 'No recent position' : '';
+  }
   const DONE = { finished: 'Finished', dnf: 'Withdrew', dns: 'Did not start', dsq: 'Disqualified', 'cut off': 'Missed a cut-off' };
   function state(o) {
     const p = o.r.pos, now = Date.now(), st = o.c && o.c.status;
     if (st) return { k: st === 'finished' ? 'fin' : 'out', text: DONE[st] || st };
     if (!p) return { k: 'pre', text: o.S && now < o.S.points[0].ft.getTime() ? 'Not started yet' : 'No position yet' };
+    const g = gone(o);
+    if (g) return { k: 'gone', text: g };
     return { k: 'on', text: 'On course' };
   }
   // How the position was worked out, in plain words.
@@ -68,7 +84,7 @@
   // Expected times at the points to come, at the pace they've run so far (js/races.js, as on the Aid tab).
   function etas(o) {
     const p = o.r.pos, S = o.S;
-    if (!p || !S || o.c && o.c.status) return null;
+    if (!p || !S || o.c && o.c.status || gone(o)) return null;
     const rk = raceKm(o, p.km), L = livePace(S, rk, p.t);
     if (L && !L.early && !L.behind) return { p: L.p, at: k => timeAt(S, k.km, L.p) };
     // Too early to tell their pace: only the next timing point, from the tracking's own estimate.
@@ -95,7 +111,7 @@
   // The next point on their race, how far it is and when they're expected: "Next: Halls Gap in 4.2 km, about Fri 14:35".
   function nextLine(o) {
     const p = o.r.pos, S = o.S;
-    if (!p || !S || o.c && o.c.status) return '';
+    if (!p || !S || o.c && o.c.status || gone(o)) return '';
     const km = TR().cur(o.r), nx = S.points.find(k => k.gk > km + 0.1), E = nx && etas(o), tn = E && E.at(nx);
     return nx ? `Next: <b>${esc(nx.name)}</b> in ${one(Math.max(0, nx.gk - km))} km${tn ? `, about ${at(tn)}` : ''}` : '';
   }
@@ -131,6 +147,9 @@
     const pl = places(o), placeLine = pl ? `<p class="tk-line tk-place">${fr ? 'Finished' : 'Running'} <b>${nth(pl.n)}</b> of ${pl.of}${pl.g ? ` · ${nth(pl.g)} ${o.gender === 'F' ? 'woman' : 'man'}` : ''}${pl.a ? ` · ${nth(pl.a)} in ${esc(o.gender + ' ' + o.c.age)}` : ''} <small>live order</small></p>` : '';
     if (fr && t0) h += `<p class="tk-big">${hmm(fr.t - t0)}</p><p class="tk-line">Crossed the finish ${at(fr.t)}.</p>${placeLine}`;
     else if (s.k === 'out') h += `<p class="tk-line">${p && p.chipAt ? `Last read at ${esc(p.chipAt.name)}, ${at(p.chipAt.t)}.` : ''}</p>`;
+    // Not racing as far as the app can tell (their race is over, the tracker is off their race, or nothing for hours):
+    // where they were last heard from, and no guesses.
+    else if (s.k === 'gone') h += `<p class="tk-line">${s.text === 'Race over' ? 'Their race has finished. The official results have their time.' : p.away ? 'Their tracker isn\'t on their race\'s part of the course.' : 'Nothing from their tracker or the timing chips for a while.'}</p><p class="tk-src">Last heard: ${source(p)}${p.chipAt && p.src !== 'chip' ? `. Last timing chip at ${esc(p.chipAt.name)}, ${at(p.chipAt.t)}` : ''}</p>`;
     else if (p) {
       const km = TR().cur(o.r), rk = raceKm(o, km);
       h += `<p class="tk-big">km ${one(rk)}${len ? `<small> of ${one(len)}</small>` : ''}</p>`;
@@ -178,7 +197,7 @@
           <p class="fd-hint">Times are from the timing chips, as they come in. Points without a timing mat show their expected time only. Expected times are a guide, from the pace they've run so far.</p>`;
       }
     }
-    h += `<div class="tk-btns">${p && !(o.c && o.c.status === 'dns') ? `<button type="button" class="btn small" data-map="${esc(o.bib)}">Show on map</button>` : ''}<button type="button" class="btn small" data-share="${esc(o.bib)}">Share</button><button type="button" class="btn small tk-off" data-follow="${esc(o.bib)}">Unfollow</button></div>`;
+    h += `<div class="tk-btns">${p && !(o.c && o.c.status === 'dns') && s.k !== 'gone' ? `<button type="button" class="btn small" data-map="${esc(o.bib)}">Show on map</button>` : ''}<button type="button" class="btn small" data-share="${esc(o.bib)}">Share</button><button type="button" class="btn small tk-off" data-follow="${esc(o.bib)}">Unfollow</button></div>`;
     return `<section class="fd-card tk-card" data-bib="${esc(o.bib)}">${h}</section>`;
   }
 
@@ -207,7 +226,7 @@
   function order(key, g, a) {
     const tr = TR(); if (!tr) return [];
     const rs = everyone().filter(r => r.chip && r.chip.raceKey === key).map(r => info(r.bib)).filter(o => o && (!g || o.gender === g) && (!a || o.c.age === a));
-    const rank = o => { const st = o.c.status; return st === 'finished' ? 0 : !st && o.r.pos ? 1 : !st ? 2 : st === 'dns' ? 4 : 3; };
+    const rank = o => { const st = o.c.status; return st === 'finished' ? 0 : !st && o.r.pos && !gone(o) ? 1 : !st ? 2 : st === 'dns' ? 4 : 3; };
     return rs.sort((a, b) => {
       const ra = rank(a), rb = rank(b);
       if (ra !== rb) return ra - rb;
@@ -222,7 +241,7 @@
   function ranked(key) {
     const tr = TR(), TC = window.GPTTiming, stamp = [tr ? tr.state.updated || 0 : 0, TC && TC.state ? TC.state.updated || 0 : 0, Math.floor(Date.now() / 30e3)].join();
     if (placeMemo.at !== stamp) placeMemo = { at: stamp, by: {} };
-    return placeMemo.by[key] || (placeMemo.by[key] = order(key, '', '').filter(o => o.c.status === 'finished' || (!o.c.status && o.r.pos)));
+    return placeMemo.by[key] || (placeMemo.by[key] = order(key, '', '').filter(o => o.c.status === 'finished' || (!o.c.status && o.r.pos && !gone(o))));
   }
   function places(o) {
     if (!o.c || !o.key) return null;
@@ -269,8 +288,8 @@
       const st = o.c.status, fr = finishRead(o), t0 = startT(o), p = o.r.pos;
       let place = '', right = '', mid = '';
       if (st === 'finished') { place = ++n; right = `<b>${t0 ? hmm(fr.t - t0) : clock(fr.t)}</b>`; mid = 'Finished'; }
-      else if (!st && p) { place = ++n; const rk = raceKm(o, tr.cur(o.r)); right = `km ${one(rk)}`; mid = o.c.last ? `${esc(o.c.last.name)} ${clock(o.c.last.t)}` : p.src === 'gps' ? 'GPS' : ''; }
-      else { right = `<span class="muted">${esc(st ? DONE[st] || st : 'Not started')}</span>`; mid = st && o.c.last ? `Last read ${esc(o.c.last.name)}` : ''; }
+      else if (!st && p && !gone(o)) { place = ++n; const rk = raceKm(o, tr.cur(o.r)); right = `km ${one(rk)}`; mid = o.c.last ? `${esc(o.c.last.name)} ${clock(o.c.last.t)}` : p.src === 'gps' ? 'GPS' : ''; }
+      else { right = `<span class="muted">${esc(st ? DONE[st] || st : p && gone(o) ? gone(o) : 'Not started')}</span>`; mid = st && o.c.last ? `Last read ${esc(o.c.last.name)}` : ''; }
       return `<div class="tk-row${isOn(o.bib) ? ' on' : ''}"><span class="tk-pl">${place}</span><button type="button" class="tk-who" data-pick="${esc(o.bib)}"><b>${esc(o.name)}</b><small>Bib ${esc(o.bib)}${mid ? ' · ' + mid : ''}</small></button><span class="tk-r">${right}</span></div>`;
     });
     // The top of the field, plus anyone followed further down; Show all for the rest.
@@ -435,7 +454,7 @@
     }
     const box = everyCtl.getContainer();
     if (!live()) { box.hidden = true; sync(everyMarks, everyLayer, []); return; }
-    const all = TR().list().map(infoOf).filter(o => o && o.r.pos && !(o.c && o.c.status));
+    const all = TR().list().map(infoOf).filter(o => o && o.r.pos && !(o.c && o.c.status) && !gone(o));
     const n = {}; all.forEach(o => { const g = groupOf(o).id; n[g] = (n[g] || 0) + 1; });
     box.hidden = !all.length;
     // In the bottom corner, so the key opens upwards, above the buttons.
@@ -448,7 +467,7 @@
     const shown = everyOn ? all.filter(o => !hidden.includes(groupOf(o).id)) : [];
     const spot = o => o.r.pos.est ? [o.r.pos.est.lat, o.r.pos.est.lon] : [o.r.pos.lat, o.r.pos.lon];
     sync(everyMarks, everyLayer, shown.map(o => {
-      const g = groupOf(o), p = o.r.pos, ll = spot(o), faint = !!(p.est || p.stale);
+      const g = groupOf(o), p = o.r.pos, ll = spot(o), faint = !!(p.est || p.stale || p.ageMs > 30 * 60e3);   // faint: a guess, or old news
       const sel = picked(o.r.id), dot = { radius: sel ? 9 : 6, weight: sel ? 4 : 2, color: sel ? '#111' : '#fff', fillColor: g.color, fillOpacity: faint ? 0.45 : 1 };
       return {
         id: o.r.id, ll, kind: bibs ? 'bib' : 'dot', look: g.color + faint + sel,
@@ -476,8 +495,8 @@
     const items = [];
     if (live()) follow.forEach((bib, k) => {
       const o = info(bib), p = o && o.r.pos;
-      if (!p || (o.c && o.c.status && o.c.status !== 'finished')) return;
-      const ll = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon], cls = `trk-mk tk-mk${p.est ? ' est' : ''}${p.stale ? ' stale' : ''}${picked(bib) ? ' sel' : ''}`;
+      if (!p || gone(o) || (o.c && o.c.status && o.c.status !== 'finished')) return;   // (no marker for old news: their card says where they were last heard)
+      const ll = p.est ? [p.est.lat, p.est.lon] : [p.lat, p.lon], cls = `trk-mk tk-mk${p.est ? ' est' : ''}${p.stale || p.ageMs > 30 * 60e3 ? ' stale' : ''}${picked(bib) ? ' sel' : ''}`;
       const icon = () => L.divIcon({ className: '', html: `<div class="${cls}">${esc(bib)}</div>`, iconSize: [30, 18], iconAnchor: [15, 9 - 20 * (k % 3)] });
       items.push({ id: bib, ll, kind: 'fol', look: cls + (k % 3), make: () => L.marker(ll, { icon: icon(), zIndexOffset: 800 }), restyle: mk => mk.setIcon(icon()),
         html: () => popHTML(o) });

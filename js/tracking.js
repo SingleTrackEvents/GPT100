@@ -40,6 +40,8 @@
   const ALPHA = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
   const STALE_MIN = 15, STOPPED_MIN = 20, STOPPED_M = 60, KEEP = 240;  // last fixes kept per runner (about 3 hours)
   const EST_MIN = 3;        // a hard fix older than this gets a projected km
+  const EST_GRACE_MIN = 30; // the projected km is kept this long past the time cut-off pace would reach the next timing point
+  const AWAY_KM = 1;        // a tracker this far before its runner's start, or past their finish, isn't on their race
   const LATE_MIN = 20;      // late at the next timing point: this long (or a quarter of the leg) past their expected time
   // At an aid station: within AID_M of one. Not moving or a quiet tracker there is a runner at the aid station (a tent or a
   // roof blocks the signal), shown on its own, until they've been there longer than 9 in 10 runners stayed in 2026
@@ -308,8 +310,12 @@
       return;
     }
     const hard = chip && (!gps || chip.t > gps.t) ? chip : gps, src = hard === chip ? 'chip' : 'gps';
+    // A tracker that isn't on its runner's own race: more than AWAY_KM before their start or past their finish along
+    // the course (a stage runner's tracker back at Halls Gap after the stage, or riding the shuttle). It's shown where
+    // it is, but the runner isn't counted as on course there: no estimate, not late, not on the watch lists.
+    const away = c && src === 'gps' && c.finishKm > c.startKm ? (hard.km < c.startKm - AWAY_KM ? 'before' : hard.km > c.finishKm + AWAY_KM ? 'after' : '') : '';
     const pos = Object.assign({}, hard, {
-      src, ageMs: now - hard.t, onCourse: hard.offM <= 150, done: '',
+      src, ageMs: now - hard.t, onCourse: hard.offM <= 150 && !away, away, done: '',
       stale: src === 'gps' && gps.stale,                       // the tracker has gone quiet and nothing newer from the chips
       quiet: !!(gps && gps.stale),                             // the tracker itself has gone quiet (the chips may still place them)
       stopped: src === 'gps' && gps.stopped,
@@ -317,7 +323,7 @@
       offFixes: src === 'gps' ? gps.offFixes : 0, offMin: src === 'gps' ? gps.offMin : 0
     });
     // At an aid station: their newest position is there (a GPS fix, or a chip read there that isn't the Out read).
-    if (gps && gps.aid && (src === 'gps' || (Math.abs(hard.km - gps.aid.km) < 0.3 && !/\(out\)$/.test(read.name)))) {
+    if (!away && gps && gps.aid && (src === 'gps' || (Math.abs(hard.km - gps.aid.km) < 0.3 && !/\(out\)$/.test(read.name)))) {
       const stayMs = now - gps.aid.since;
       pos.atAid = Object.assign({}, gps.aid, { stayMs, over: stayMs > gps.aid.limitMin * 60e3 });
     }
@@ -328,7 +334,10 @@
     const cap = nextPt ? Math.min(nextPt.km, finKm) : finKm;
     // At their pace they'd have reached the next timing point by now, but there's no read there: they're somewhere
     // on that leg, so the estimate sits in the middle of it and says so.
-    if (pos.onCourse && !pos.stopped && pos.ageMs > EST_MIN * 60e3 && pos.km < cap - 0.05) {
+    // Only while they could still be on that leg: once even cut-off pace would have brought them to the timing point
+    // (and EST_GRACE_MIN more), there's no telling where they are, and they stay at their last known position. Without
+    // this, trackers handed back at Halls Gap after the 2026 race were marched up the Pinnacle track for days.
+    if (pos.onCourse && !pos.stopped && pos.ageMs > EST_MIN * 60e3 && pos.km < cap - 0.05 && now <= hard.t + legMs(E, pos.km, cap, 1) + EST_GRACE_MIN * 60e3) {
       let km = kmAfter(E, pos.km, f, pos.ageMs, cap);
       const capped = km >= cap - 1e-6;
       // Spread across the middle of the leg by bib, so two runners on the same leg don't sit on one spot.
@@ -610,6 +619,7 @@
       return p.done === 'dns' ? w : `${w}${p.chipAt ? ` (${p.chipAt.name} ${hm.format(p.chipAt.t)})` : ''}`;
     }
     let s = p.src === 'chip' ? `chip read at ${p.chipAt.name} ${hm.format(p.chipAt.t)} (${ago(p.ageMs)})` : `GPS fix ${ago(p.ageMs)}`;
+    if (p.away) s += p.away === 'before' ? ', not on their race\'s part of the course (before their start)' : ', not on their race\'s part of the course (past their finish)';
     if (p.est) s += p.est.capped ? `, somewhere between km ${one(p.est.fromKm)} and ${esc(p.est.to)} (km ${one(p.est.toKm)}): due there by now at their pace, no read yet` : `, likely about km ${one(p.est.km)} now`;
     if (p.stopped) s += ', not moving';
     if (p.quiet && p.src === 'chip') s += `. Tracker quiet since ${hm.format(p.gpsT)}`;
