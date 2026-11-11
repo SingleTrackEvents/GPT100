@@ -1,10 +1,10 @@
 # Crash tests
 
-A set of scripts that drive the four apps in a real browser and try to break them, so a change can be checked before race week. They were written for the November 2026 crash test and found two faults that are now fixed (see the end).
+A set of scripts that drive the four apps in a real browser and try to break them, so a change can be checked before race week. They were written for the November 2026 crash test and found two faults that are now fixed (see the end). The line to the phones (notices, help requests, field phones, alerts, fault reports) was added with build 104 and has its own tests here, which run the Worker itself on your computer.
 
 ## Run them
 
-Once, on your computer (Node 18 or later):
+Once, on your computer (Node 18 or later; Node 22.5 or later for the tests that run the Worker, which are left out on an older Node):
 
 ```
 npm install --no-save playwright
@@ -14,11 +14,11 @@ npx playwright install chromium
 Then, from the repo:
 
 ```
-node tools/crashtest/run.js quick    # about 25 minutes: bad input in each app, broken feeds, no signal
+node tools/crashtest/run.js quick    # about 35 minutes: bad input in each app, broken feeds, no signal, the line to the phones
 node tools/crashtest/run.js          # everything, about an hour and a half
 ```
 
-`run.js` serves the apps from this checkout on `http://127.0.0.1:8765/` and a stand-in tracking and timing provider on `:8766`, runs each test in turn, and ends with the list of problems (the exit code is 1 if there are any). Nothing is sent to the real tracking or timing providers, the Worker or WhatsApp: requests to the Worker are blocked, links are stopped from leaving the page, and the demo field or the stand-in feeds supply the runners.
+`run.js` serves the apps from this checkout on `http://127.0.0.1:8765/`, a stand-in tracking and timing provider on `:8766` and the Worker itself on `:8787` (with a made-up password and its own empty database), runs each test in turn, and ends with the list of problems (the exit code is 1 if there are any). Nothing is sent to the real tracking or timing providers, the Worker or WhatsApp: requests to the Worker are blocked, links are stopped from leaving the page, and the demo field or the stand-in feeds supply the runners.
 
 One test at a time: `node tools/crashtest/run.js only inputs.js runner` (or run a script directly once the two servers are up: `python3 -m http.server 8765` in the repo, and `node tools/crashtest/feeds.js`). The tests:
 
@@ -34,13 +34,18 @@ One test at a time: `node tools/crashtest/run.js only inputs.js runner` (or run 
 | `feeds-gps-clock.js clock` | The phone's clock set months before, on race morning, mid race, at the last cut-off, the day after and a year on, with and without the demo. |
 | `offline.js` | Opens one app with signal, cuts the network, then opens and uses every app. |
 | `monkey.js` | Hundreds of random taps, typing, map moves, resizes, back and forward on each app with the demo race running, from fixed seeds so a failure can be repeated: `node tools/crashtest/monkey.js runner 350 2`. |
+| `live.js demo` | The line to the phones with the demo standing in for the Worker: the board, the runner app and the field app in three tabs. A notice, a help request acknowledged, a field phone on the map, a fault report. |
+| `live.js worker` | The phone apps against the Worker run on this computer: notices by audience, a help request with and without signal, the team code, a location onto the board, fault reports, Follow me and the off-course buzz, the latest positions first, slower updates off screen, and alerts (a followed runner's checkpoint becomes a notification through the real service worker and a stand-in for the phone alert service). |
+| `worker-test.mjs` | 60 checks of the Worker's own addresses with good and bad input: passwords, flood limits, signed alerts, a timing list that moves on. |
 | `engine-compare.js <other checkout>` | After a change to `js/engine.js` that shouldn't change any answer: compares this checkout's engine with another's at every course point (about 26,000 checks). |
+
+`worker-local.mjs` is the Worker for rehearsals too: `RC_PASSWORD='the medical password' node tools/crashtest/worker-local.mjs`, then open the staff app with `?rcapi=http://127.0.0.1:8787&api=http://127.0.0.1:8787` to use the real Control board against a database on your own computer (the password is only typed on the command line, never saved in a file).
 
 `feeds.js` is also handy by hand: open any app with `?gps=http://127.0.0.1:8766/weird/` (or `ok`, `garbage`, `empty`, `html`, `err500`, `mid` for 400 runners, `huge` for 1,500) to see how it behaves.
 
 ## What they can't check
 
-The Medical, Control and Risk tabs behind the medical password (Control is covered through the demo), anything on a real iPhone or Android phone (home screen install, the compass, the share sheet), real GPS drift, and the live feeds themselves. Rehearse those by hand with `?demo=1` and on the phones the team will carry.
+The Medical, Control and Risk tabs behind the medical password (Control is covered through the demo, and was run by hand against the local Worker with the password for build 104), real alert delivery by Apple's and Google's services, anything on a real iPhone or Android phone (home screen install, the compass, the share sheet), real GPS drift, and the live feeds themselves. Rehearse those by hand with `?demo=1` and on the phones the team will carry.
 
 ## November 2026 results
 
