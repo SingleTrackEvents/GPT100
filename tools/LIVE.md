@@ -106,4 +106,4 @@ Help requests are incidents, so they go with the board's own export and clear-ou
 
 - **Translations.** The Tell Race Control lines in Japanese, Chinese, Russian and Polish are new and need the interpreter check, like the other app-only lines (noted at the top of `data/safety-cards.js`). What a runner sends is in English whatever language they read.
 - **Real phones.** Alerts were tested with a stand-in for the phone makers' alert services. Try one on an iPhone and an Android phone before relying on it.
-- **Crew drive times** (`data/crew-drives.js`) come from OpenStreetMap roads. Have someone who knows the roads look over the table that `node tools/crew_drives.mjs` prints.
+- **Crew drive times** (`data/crew-drives.js`) come from OpenStreetMap roads, met in the middle with the times on gpt100.com.au/aid-stations (Halls Gap to Dunkeld is 54 minutes: 62 by the road map, 46 on the site). Google Maps refuses lookups by a script, so they have not been checked against it. Spot-check a few legs in Google Maps, and when the website's times change, change `PUBLISHED` at the top of `tools/crew_drives.mjs` and run it again.
