@@ -53,6 +53,10 @@ for (let i = 0; i < rows.length; i++) {
 // GPT33k (one table) are non-crewed (gpt100.com.au/crew and /aid-stations, confirmed by the organisers, November 2026).
 const NON_CREWED = ['s4'];
 NON_CREWED.forEach(id => { const P = tables[id]; if (P) P.forEach((p, i) => { if (i < P.length - 1) p.crew = 'no'; }); });
+// Crew access the website has right and the sheet has wrong, by table and point name. Stage 3: crews have full access
+// at Jimmy Creek (gpt100.com.au/aid-stations, confirmed by the organisers, November 2026).
+const CREW_FIX = { s3: { 'Jimmy Creek Rd': 'yes' } };
+Object.entries(CREW_FIX).forEach(([id, fix]) => (tables[id] || []).forEach(p => { if (fix[p.name]) p.crew = fix[p.name]; }));
 const missing = Object.values(STAGES).filter(id => !tables[id]);
 if (missing.length) { console.error('Not found in the sheet: ' + missing.join(', ')); process.exit(1); }
 

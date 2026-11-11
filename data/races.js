@@ -324,7 +324,7 @@ window.GPT_RACES = {
      "first": "2026-11-07T07:55",
      "cutoff": "2026-11-07T12:00",
      "drop": false,
-     "crew": "no"
+     "crew": "yes"
     },
     {
      "name": "Yarram Gap Rd",
