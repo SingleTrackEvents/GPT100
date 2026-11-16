@@ -180,7 +180,7 @@ On a phone, use **Add to Home Screen** so it opens like an app.
 
 ## Hosting
 
-The app is live at **https://singletrackevents.github.io/GPT100Safety/** through GitHub Pages, publishing from the `main` branch. Anything merged into `main` goes live within a couple of minutes.
+The app is live at **https://singletrackevents.github.io/GPT100/** through GitHub Pages, publishing from the `main` branch. Anything merged into `main` goes live within a couple of minutes.
 
 It's a plain static site with no build step. Offline mode needs the site served over https, which GitHub Pages does.
 
@@ -264,7 +264,7 @@ tracking: { url: 'https://tulospalvelu.fi/gps/<event>/', label: 'Live tracking',
 
 ### Demo: run the race in the browser
 
-To rehearse or train before the links exist, open any of the apps with `?demo=1` (for example [the map page](https://singletrackevents.github.io/GPT100Safety/map.html?demo=1), or `index.html?demo=1`, `field.html?demo=1`). The made-up field in `data/demo-runners.js` (70 Miler runners and 18 in Stage 2, each at their own pace from the pacing table) runs the course live, as if the Miler had started 9 hours ago. Both feeds are played: `js/demo.js` answers the apps' GPS and timing requests itself, in the shapes the real feeds send, so the tracking code runs exactly as it will on the day. Nothing is fetched from the providers and nothing needs to be installed.
+To rehearse or train before the links exist, open any of the apps with `?demo=1` (for example [the map page](https://singletrackevents.github.io/GPT100/map.html?demo=1), or `index.html?demo=1`, `field.html?demo=1`). The made-up field in `data/demo-runners.js` (70 Miler runners and 18 in Stage 2, each at their own pace from the pacing table) runs the course live, as if the Miler had started 9 hours ago. Both feeds are played: `js/demo.js` answers the apps' GPS and timing requests itself, in the shapes the real feeds send, so the tracking code runs exactly as it will on the day. Nothing is fetched from the providers and nothing needs to be installed.
 
 The bar at the bottom shows the race time, pauses, runs at 1x, 10x or 60x, jumps ahead 30 minutes, and lists **Who to find**: the runners with something going on, with a Find button each. Everyone else is running normally.
 

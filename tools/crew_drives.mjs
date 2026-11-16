@@ -41,7 +41,7 @@ const locs = pts.map(p => ({ lat: p.lat, lon: p.lon, radius: 400 }));
 // The free server takes 100 pairs at a time: a few starting points per request, with a pause between.
 const M = [], STEP = Math.max(1, Math.floor(100 / locs.length));
 for (let i = 0; i < locs.length; i += STEP) {
-  const res = await fetch(VALHALLA + '/sources_to_targets', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'GPT100Safety crew drives' },
+  const res = await fetch(VALHALLA + '/sources_to_targets', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'GPT100 crew drives' },
     body: JSON.stringify({ sources: locs.slice(i, i + STEP), targets: locs, costing: 'auto', units: 'kilometers' }) });
   if (!res.ok) { console.error('Valhalla said ' + res.status + ': ' + (await res.text()).slice(0, 300)); process.exit(1); }
   M.push(...(await res.json()).sources_to_targets);
@@ -62,7 +62,7 @@ const decode = str => { const out = []; let i = 0, lat = 0, lon = 0; while (i < 
 const metres = (a, b) => { const r = Math.PI / 180, x = Math.sin((b[0] - a[0]) * r / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin((b[1] - a[1]) * r / 2) ** 2; return 12742000 * Math.asin(Math.sqrt(x)); };
 // Minutes of one drive spent on the slow stretch: its part of the road with that number, south of the named point.
 async function onStretch(a, b, southOf) {
-  const res = await fetch(VALHALLA + '/route', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'GPT100Safety crew drives' },
+  const res = await fetch(VALHALLA + '/route', { method: 'POST', headers: { 'Content-Type': 'application/json', 'User-Agent': 'GPT100 crew drives' },
     body: JSON.stringify({ locations: [{ lat: a.lat, lon: a.lon, radius: 400 }, { lat: b.lat, lon: b.lon, radius: 400 }], costing: 'auto', units: 'kilometers' }) });
   if (!res.ok) return 0;
   const leg = (await res.json()).trip.legs[0], sh = decode(leg.shape);

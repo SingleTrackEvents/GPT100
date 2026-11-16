@@ -1,7 +1,7 @@
 # Moving the apps to app.gpt100.com.au
 
 app.gpt100.com.au opens the runner app. The staff app stays at app.gpt100.com.au/index.html and the field app at
-app.gpt100.com.au/field.html. Old singletrackevents.github.io/GPT100Safety links redirect automatically.
+app.gpt100.com.au/field.html. Old singletrackevents.github.io/GPT100 links redirect automatically.
 
 Do the steps in this order. Switching the domain on in GitHub before the DNS record works takes every app offline.
 

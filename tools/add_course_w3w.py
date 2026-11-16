@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, '..', 'data')
 OUT = os.path.join(DATA, 'course-w3w.js')
 CONFIG = os.path.join(DATA, 'config.js')
-REFERER = os.environ.get('W3W_REFERER', 'https://singletrackevents.github.io/GPT100Safety/')
+REFERER = os.environ.get('W3W_REFERER', 'https://singletrackevents.github.io/GPT100/')
 HEAD = ('// what3words address of every course point, in route order, made by tools/add_course_w3w.py.\n'
         '// The runner app shows the words of the point nearest you when there is no signal.\n'
         'window.GPT100_COURSE_W3W = ')
@@ -46,7 +46,7 @@ def routes():
 def to_3wa(lat, lon, k):
     url = 'https://api.what3words.com/v3/convert-to-3wa?' + urllib.parse.urlencode(
         {'coordinates': f'{lat},{lon}', 'key': k})
-    req = urllib.request.Request(url, headers={'Referer': REFERER, 'User-Agent': 'GPT100Safety'})
+    req = urllib.request.Request(url, headers={'Referer': REFERER, 'User-Agent': 'GPT100'})
     for attempt in range(4):
         try:
             j = json.load(urllib.request.urlopen(req, timeout=30))

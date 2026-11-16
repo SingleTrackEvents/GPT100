@@ -35,7 +35,7 @@ if (!process.argv.includes('--list')) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     for (let tries = 0; ; tries++) {
       try {
-        const res = await fetch(`https://${'abc'[n % 3]}.tile.opentopomap.org/${k}.png`, { headers: { 'User-Agent': 'GPT100Safety race safety app, one-off offline corridor (singletrack.com.au)' } });
+        const res = await fetch(`https://${'abc'[n % 3]}.tile.opentopomap.org/${k}.png`, { headers: { 'User-Agent': 'GPT100 race safety app, one-off offline corridor (singletrack.com.au)' } });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
         got++;

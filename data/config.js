@@ -35,7 +35,7 @@ window.GPT100_CONFIG = {
   // Triggers follow the Risk Management Plan v3.2, section 5. "close" is the getting-close level.
   weather: {
     // Where the hourly watch publishes its results (a separate branch, so the site isn't rebuilt every hour).
-    dataUrl: 'https://raw.githubusercontent.com/SingleTrackEvents/GPT100Safety/weather-data/',
+    dataUrl: 'https://raw.githubusercontent.com/SingleTrackEvents/GPT100/weather-data/',
     // The weather refresh relay (Cloudflare Worker, tools/REFRESH_WORKER.md). Blank hides the Refresh now button.
     refreshUrl: 'https://gpt100-refresh.chad-ad3.workers.dev',
     event: { start: '2026-11-05T06:00', end: '2026-11-08T17:00' },  // first start to last cut-off

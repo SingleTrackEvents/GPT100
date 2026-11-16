@@ -32,7 +32,7 @@ def add_access_heights():
     if not need:
         return
     body = json.dumps({'shape': [{'lat': a['lat'], 'lon': a['lon']} for a in need], 'range': False}).encode()
-    req = urllib.request.Request('https://valhalla1.openstreetmap.de/height', body, {'Content-Type': 'application/json', 'User-Agent': 'GPT100Safety'})
+    req = urllib.request.Request('https://valhalla1.openstreetmap.de/height', body, {'Content-Type': 'application/json', 'User-Agent': 'GPT100'})
     heights = json.load(urllib.request.urlopen(req, timeout=60))['height']
     for a, h in zip(need, heights):
         if h is not None:
@@ -58,7 +58,7 @@ def walking_joins(route, access):
     la = [p[0] for p in route]; lo = [p[1] for p in route]; pad = 0.015
     bbox = (min(lo) - pad, min(la) - pad, max(lo) + pad, max(la) + pad)
     url = 'https://api.openstreetmap.org/api/0.6/map?bbox=%.5f,%.5f,%.5f,%.5f' % bbox
-    root = ET.fromstring(urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'GPT100Safety'}), timeout=120).read())
+    root = ET.fromstring(urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': 'GPT100'}), timeout=120).read())
     nodes = {n.get('id'): (float(n.get('lat')), float(n.get('lon'))) for n in root.iter('node')}
     graph = {}
     for w in root.iter('way'):
