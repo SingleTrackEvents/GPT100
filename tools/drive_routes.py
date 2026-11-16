@@ -67,12 +67,12 @@ def simplify(pts, tol_m=12):
 
 
 def post(url, body):
-    req = urllib.request.Request(url, json.dumps(body).encode(), {'Content-Type': 'application/json', 'User-Agent': 'GPT100Safety route check'})
+    req = urllib.request.Request(url, json.dumps(body).encode(), {'Content-Type': 'application/json', 'User-Agent': 'GPT100 route check'})
     return json.load(urllib.request.urlopen(req, timeout=90))
 
 
 def get(url):
-    req = urllib.request.Request(url, headers={'User-Agent': 'GPT100Safety route check'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'GPT100 route check'})
     return json.load(urllib.request.urlopen(req, timeout=60))
 
 

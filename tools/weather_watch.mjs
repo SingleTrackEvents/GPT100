@@ -72,7 +72,7 @@ function gridPoints() {
 async function get(url, type = 'json', tries = 3) {
   for (let k = 1; ; k++) {
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': 'GPT100Safety weather watch (singletrackevents.github.io/GPT100Safety)' }, signal: AbortSignal.timeout(90000) });
+      const res = await fetch(url, { headers: { 'User-Agent': 'GPT100 weather watch (singletrackevents.github.io/GPT100)' }, signal: AbortSignal.timeout(90000) });
       if (res.status === 429 && k < tries) { console.log('  rate limited, waiting 65 s'); await sleep(65000); continue; }
       if (!res.ok) throw new Error('HTTP ' + res.status + ' ' + (await res.text()).slice(0, 200));
       return type === 'json' ? await res.json() : await res.text();
@@ -231,7 +231,7 @@ async function fetchReplay(year, points) {
 
 // ---------- phone alerts ----------
 const NTFY = process.env.NTFY_TOPIC;
-const APP = process.env.APP_URL || 'https://singletrackevents.github.io/GPT100Safety/#weather';
+const APP = process.env.APP_URL || 'https://singletrackevents.github.io/GPT100/#weather';
 async function notify(title, body, priority, tags) {
   console.log(`ALERT [${priority}] ${title}\n  ${body.replace(/\n/g, '\n  ')}`);
   if (DRY || !NTFY) return;

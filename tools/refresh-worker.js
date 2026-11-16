@@ -60,14 +60,14 @@
 // Secret:    NTFY_TOPIC     the ntfy topic for feed health alerts on the phone (optional; the weather watch's topic works)
 
 const DEFAULTS = {
-  REPO: 'SingleTrackEvents/GPT100Safety',
+  REPO: 'SingleTrackEvents/GPT100',
   WORKFLOW: 'weather.yml',
   BRANCH: 'main',
   ALLOWED_ORIGIN: 'https://singletrackevents.github.io,https://app.gpt100.com.au',
   ARCHIVE_GPS: '20261106gpt100,20261105gpt50',
   ARCHIVE_FROM: '2026-11-05T05:00:00+11:00',
   ARCHIVE_TO: '2026-11-09T12:00:00+11:00',
-  SITE_CONFIG: 'https://singletrackevents.github.io/GPT100Safety/data/config.js'
+  SITE_CONFIG: 'https://singletrackevents.github.io/GPT100/data/config.js'
 };
 const GPS_HOST = 'https://tulospalvelu.fi/gps/';  // the GPS tracking provider (GPS-seuranta)
 const gpsHost = env => (env && env.GPS_HOST) || GPS_HOST;  // (a rehearsal on a computer can point this at its own files)
@@ -372,7 +372,7 @@ async function archiveRun(env, force) {
   let timingBuf = null;
   const grab = async (kind, event, url, ttl) => {
     try {
-      const res = await fetch(url, { headers: { 'User-Agent': 'GPT100Safety archive' }, cf: { cacheTtl: ttl, cacheEverything: true } });
+      const res = await fetch(url, { headers: { 'User-Agent': 'GPT100 archive' }, cf: { cacheTtl: ttl, cacheEverything: true } });
       // An event set up but not started has no data.lst yet (403 or 404): nothing to keep.
       if (!res.ok) { out.push({ kind, event, status: res.status }); return; }
       const buf = await res.arrayBuffer();
@@ -400,7 +400,7 @@ async function archiveRun(env, force) {
 async function archiveEvents(c) {
   const ids = new Set(String(c.ARCHIVE_GPS || '').split(',').map(x => x.trim()));
   try {
-    const res = await fetch(c.SITE_CONFIG, { headers: { 'User-Agent': 'GPT100Safety archive' }, cf: { cacheTtl: 300, cacheEverything: true } });
+    const res = await fetch(c.SITE_CONFIG, { headers: { 'User-Agent': 'GPT100 archive' }, cf: { cacheTtl: 300, cacheEverything: true } });
     const m = res.ok && (await res.text()).match(/\bgps:\s*\[([^\]]*)\]/);
     if (m) for (const q of m[1].match(/['"][A-Za-z0-9_-]{1,80}['"]/g) || []) ids.add(q.slice(1, -1));
   } catch (e) { }
@@ -430,7 +430,7 @@ async function feedHealth(env, db, now, events, timingBuf) {
   const gpsAge = {};
   for (const ev of events) {
     try {
-      const res = await fetch(gpsHost(env) + ev + '/data.lst', { method: 'HEAD', headers: { 'User-Agent': 'GPT100Safety health' } });
+      const res = await fetch(gpsHost(env) + ev + '/data.lst', { method: 'HEAD', headers: { 'User-Agent': 'GPT100 health' } });
       const lm = res.ok ? Date.parse(res.headers.get('Last-Modified') || '') : NaN;
       if (lm) gpsAge[ev] = now - lm;
     } catch (e) { }
@@ -465,7 +465,7 @@ async function alertHealth(env, db, issues) {
   if (ops.length) await db.batch(ops);
   if (!env.NTFY_TOPIC) return;
   const send = (title, body, priority, tags) => fetch('https://ntfy.sh/' + encodeURIComponent(env.NTFY_TOPIC), { method: 'POST', body,
-    headers: { Title: title, Priority: String(priority), Tags: tags, Click: 'https://singletrackevents.github.io/GPT100Safety/' } }).catch(() => { });
+    headers: { Title: title, Priority: String(priority), Tags: tags, Click: 'https://singletrackevents.github.io/GPT100/' } }).catch(() => { });
   for (const i of fresh) await send(i.level === 'bad' ? 'GPT100 feed problem' : 'GPT100 feed warning', i.text, i.level === 'bad' ? 4 : 3, 'satellite');
   for (const g of gone) await send('GPT100 feed problem cleared', 'Cleared: ' + g.text, 2, 'white_check_mark');
 }
@@ -502,7 +502,7 @@ async function gpsRelay(req, env, url, c) {
   for (const k of ['offset', 'reset', 'data', 'a']) if (url.searchParams.has(k)) qs.set(k, url.searchParams.get(k).slice(0, 80));
   const upstream = gpsHost(env) + (m[1] ? m[1] + '/' : '') + m[2] + (qs.toString() ? '?' + qs : '');
   const ttl = m[2] === 'init.txt' ? 60 : m[2] === 'data.lst' ? 15 : 5;
-  const res = await fetch(upstream, { headers: { 'User-Agent': 'GPT100Safety relay' }, cf: { cacheTtl: ttl, cacheEverything: true } });
+  const res = await fetch(upstream, { headers: { 'User-Agent': 'GPT100 relay' }, cf: { cacheTtl: ttl, cacheEverything: true } });
   const headers = Object.assign({}, c.headers, {
     'Content-Type': 'text/plain; charset=utf-8',
     'Cache-Control': 'public, max-age=' + ttl,
@@ -532,7 +532,7 @@ async function timingRelay(req, env, url, c) {
   const json = (o, status) => new Response(JSON.stringify(o), { status: status || 200, headers: c.headers });
   if (!c.ok) return json({ error: 'Not allowed from this site' }, 403);
   if (!env.TIMING_URL) return json({ error: 'Timing isn\'t set up on the Worker yet (needs the TIMING_URL secret)' }, 503);
-  const res = await fetch(env.TIMING_URL, { headers: { 'User-Agent': 'GPT100Safety relay' }, cf: { cacheTtl: 20, cacheEverything: true } });
+  const res = await fetch(env.TIMING_URL, { headers: { 'User-Agent': 'GPT100 relay' }, cf: { cacheTtl: 20, cacheEverything: true } });
   if (!res.ok) return json({ error: 'The timing feed said ' + res.status }, 502);
   return new Response(res.body, { status: 200, headers: Object.assign({}, c.headers, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=20' }) });
 }
@@ -678,7 +678,7 @@ async function liveApi(req, env, url, c, ctx) {
     if (!had) {
       await db.prepare('DELETE FROM faults WHERE sig NOT IN (SELECT sig FROM faults ORDER BY last DESC LIMIT 300)').run();
       if (env.NTFY_TOPIC && ctx) ctx.waitUntil(fetch('https://ntfy.sh/' + encodeURIComponent(env.NTFY_TOPIC), { method: 'POST', body: `${d.app || 'app'} build ${d.build || '?'}: ${d.msg} (${d.src}:${d.line})`,
-        headers: { Title: 'GPT100 app fault (new)', Priority: '3', Tags: 'bug', Click: 'https://singletrackevents.github.io/GPT100Safety/' } }).catch(() => { }));
+        headers: { Title: 'GPT100 app fault (new)', Priority: '3', Tags: 'bug', Click: 'https://singletrackevents.github.io/GPT100/' } }).catch(() => { }));
     }
     return json({ ok: true });
   }
@@ -817,7 +817,7 @@ async function pushRun(env, now, force) {
   let news = 0;
   if (env.TIMING_URL && (inWindow || force)) {
     const followed = new Set(subs.flatMap(s => s.bibs.split(',').filter(Boolean)));
-    const res = await fetch(env.TIMING_URL, { headers: { 'User-Agent': 'GPT100Safety alerts' }, cf: { cacheTtl: 20, cacheEverything: true } });
+    const res = await fetch(env.TIMING_URL, { headers: { 'User-Agent': 'GPT100 alerts' }, cf: { cacheTtl: 20, cacheEverything: true } });
     if (res.ok) {
       const rows = timingRows(await res.json().catch(() => null));
       const key = k => k.toLowerCase().replace(/[^a-z]/g, '');

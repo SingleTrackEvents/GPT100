@@ -18,7 +18,7 @@ Setup takes about 15 minutes.
 
 1. On GitHub, go to your profile picture, then **Settings**, then **Developer settings**, then **Personal access tokens**, then **Fine-grained tokens**, then **Generate new token**.
 2. **Token name:** GPT100 weather refresh. **Expiration:** after the event, for example 31 December 2026.
-3. **Repository access:** choose **Only select repositories**, then pick **SingleTrackEvents/GPT100Safety**.
+3. **Repository access:** choose **Only select repositories**, then pick **SingleTrackEvents/GPT100**.
 4. **Permissions:** under Repository permissions, set **Actions** to **Read and write**. Leave everything else as it is.
 5. Click **Generate token** and copy it. Keep it private. You'll paste it into Cloudflare in step 3 and nowhere else.
 

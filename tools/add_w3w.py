@@ -13,7 +13,7 @@ import json, os, re, sys, time, urllib.parse, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 COURSE = os.path.join(HERE, '..', 'data', 'course.js')
 CONFIG = os.path.join(HERE, '..', 'data', 'config.js')
-REFERER = os.environ.get('W3W_REFERER', 'https://singletrackevents.github.io/GPT100Safety/')
+REFERER = os.environ.get('W3W_REFERER', 'https://singletrackevents.github.io/GPT100/')
 
 
 def key():
@@ -29,7 +29,7 @@ def key():
 def to_3wa(lat, lon, k):
     url = 'https://api.what3words.com/v3/convert-to-3wa?' + urllib.parse.urlencode(
         {'coordinates': f'{lat},{lon}', 'key': k})
-    req = urllib.request.Request(url, headers={'Referer': REFERER, 'User-Agent': 'GPT100Safety'})
+    req = urllib.request.Request(url, headers={'Referer': REFERER, 'User-Agent': 'GPT100'})
     for attempt in range(3):
         try:
             j = json.load(urllib.request.urlopen(req, timeout=30))

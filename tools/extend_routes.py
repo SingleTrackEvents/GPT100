@@ -21,7 +21,7 @@ WALK_ONLY = {'footway', 'path', 'steps', 'pedestrian', 'bridleway', 'cycleway'}
 
 def osm(bbox):
     url = 'https://api.openstreetmap.org/api/0.6/map?bbox=%.5f,%.5f,%.5f,%.5f' % bbox
-    req = urllib.request.Request(url, headers={'User-Agent': 'GPT100Safety route check'})
+    req = urllib.request.Request(url, headers={'User-Agent': 'GPT100 route check'})
     root = ET.fromstring(urllib.request.urlopen(req, timeout=90).read())
     nodes = {n.get('id'): (float(n.get('lat')), float(n.get('lon'))) for n in root.iter('node')}
     ways = []
